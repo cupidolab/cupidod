@@ -1,0 +1,137 @@
+# =============================================================================
+#  CUPIDO — build automático para Windows, macOS e Linux + instaladores
+#  Roda a cada push. Ao criar uma tag (ex.: v1.0.0) publica um Release com os
+#  instaladores prontos para baixar.
+# =============================================================================
+name: build
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ "v*" ]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: WebView2 SDK (NuGet)
+        shell: pwsh
+        run: |
+          $v = "1.0.3485.44"
+          New-Item -ItemType Directory -Force -Path C:\webview2 | Out-Null
+          Invoke-WebRequest "https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/$v" -OutFile C:\webview2\wv2.zip
+          Expand-Archive C:\webview2\wv2.zip -DestinationPath "C:\webview2\Microsoft.Web.WebView2.$v" -Force
+
+      - name: Configurar (AAX se o secret AAX_SDK_ZIP_URL existir)
+        shell: pwsh
+        env:
+          AAX_SDK_ZIP_URL: ${{ secrets.AAX_SDK_ZIP_URL }}
+        run: |
+          $aax = ""
+          if ($env:AAX_SDK_ZIP_URL) { Invoke-WebRequest $env:AAX_SDK_ZIP_URL -OutFile aax.zip; Expand-Archive aax.zip -DestinationPath C:\aax; $aax = "-DAAX_SDK_PATH=" + (Get-ChildItem C:\aax -Directory | Select-Object -First 1).FullName }
+          cmake -B build -G "Visual Studio 17 2022" -A x64 -DJUCE_WEBVIEW2_PACKAGE_LOCATION=C:/webview2 $aax
+
+      - name: Compilar
+        run: cmake --build build --config Release --parallel
+
+      - name: Testes do motor de áudio
+        run: build\Release\cupido_dsp_tests.exe
+
+      - name: Instalador (Inno Setup)
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}".TrimStart("v"); if ($ver -notmatch '^\d') { $ver = "1.0.0" }
+          $env:CUPIDO_VERSION = $ver
+          Invoke-WebRequest "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile installer\windows\MicrosoftEdgeWebview2Setup.exe
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) { choco install innosetup -y --no-progress }
+          $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source; if (-not $iscc) { $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" }
+          & $iscc installer\windows\cupido.iss "/DSourceDir=$PWD\build\Cupido_artefacts\Release"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CUPIDO-Windows
+          path: dist/*.exe
+
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configurar e compilar (universal arm64 + x86_64)
+        run: |
+          cmake -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+          cmake --build build --config Release --parallel -- -quiet
+      - name: Testes do motor de áudio
+        run: ./build/Release/cupido_dsp_tests
+      - name: Validar Audio Unit
+        continue-on-error: true
+        run: |
+          mkdir -p ~/Library/Audio/Plug-Ins/Components
+          cp -R build/Cupido_artefacts/Release/AU/CUPIDO.component ~/Library/Audio/Plug-Ins/Components/
+          killall -9 AudioComponentRegistrar || true
+          auval -v aufx Cpd1 Cpdo
+      - name: Instalador (.pkg)
+        env:
+          DEV_ID_APP: ${{ secrets.DEV_ID_APP }}
+          DEV_ID_INSTALLER: ${{ secrets.DEV_ID_INSTALLER }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          VER="${GITHUB_REF_NAME#v}"; [[ "$VER" =~ ^[0-9] ]] || VER=1.0.0
+          chmod +x installer/macos/build_pkg.sh
+          installer/macos/build_pkg.sh build/Cupido_artefacts/Release "$VER"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CUPIDO-macOS
+          path: dist/*.pkg
+
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependências
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libasound2-dev libjack-jackd2-dev libcurl4-openssl-dev libfreetype-dev libfontconfig1-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libglu1-mesa-dev mesa-common-dev
+      - name: Compilar
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel
+      - name: Testes do motor de áudio
+        run: ./build/cupido_dsp_tests
+      - name: Pacote
+        run: |
+          VER="${GITHUB_REF_NAME#v}"; [[ "$VER" =~ ^[0-9] ]] || VER=1.0.0
+          mkdir -p dist/CUPIDO-$VER-Linux
+          cp -R build/Cupido_artefacts/Release/{VST3,LV2,Standalone} dist/CUPIDO-$VER-Linux/ 2>/dev/null || true
+          cp installer/linux/install.sh assets/icon.png dist/CUPIDO-$VER-Linux/
+          chmod +x dist/CUPIDO-$VER-Linux/install.sh
+          tar -C dist -czf dist/CUPIDO-$VER-Linux.tar.gz CUPIDO-$VER-Linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CUPIDO-Linux
+          path: dist/*.tar.gz
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [ windows, macos, linux ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: out/**/*
+          generate_release_notes: true
