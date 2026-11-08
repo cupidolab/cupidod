@@ -1,0 +1,20 @@
+CUPIDO — Suíte vocal com IA
+Copyright (C) 2026 Cupido Audio <cupidostore01@gmail.com>
+
+Este programa é software livre: você pode redistribuí-lo e/ou modificá-lo sob
+os termos da GNU Affero General Public License, versão 3 (AGPLv3), conforme
+publicada pela Free Software Foundation.
+
+Este programa é distribuído na esperança de que seja útil, mas SEM QUALQUER
+GARANTIA; sem mesmo a garantia implícita de COMERCIALIZAÇÃO ou ADEQUAÇÃO A UM
+PROPÓSITO ESPECÍFICO. Texto completo da licença: https://www.gnu.org/licenses/agpl-3.0.html
+
+Observação: o CUPIDO usa o framework JUCE (https://juce.com), licenciado sob
+AGPLv3 ou licença comercial. Para vender o CUPIDO com código fechado é
+necessário adquirir uma licença comercial do JUCE (e, para o formato AAX/Pro
+Tools, assinar o contrato de desenvolvedor da Avid).
+
+VST é marca registrada da Steinberg Media Technologies GmbH. Audio Unit, Logic
+e GarageBand são marcas da Apple Inc. Pro Tools e AAX são marcas da Avid.
+Nomes de artistas e de outros plugins citados servem apenas como referência de
+estilo sonoro; o CUPIDO não é afiliado a eles.
