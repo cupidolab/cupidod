@@ -30,7 +30,8 @@ juce::var AiSettings::toPublicJson() const
     o->setProperty ("claudeModel",    get ("claudeModel", "claude-haiku-5-5"));
     o->setProperty ("claudeKeyMasked", mask (get ("claudeKey")));
     o->setProperty ("hasClaudeKey",   get ("claudeKey").isNotEmpty());
-    o->setProperty ("sttProvider",    get ("sttProvider", "groq"));
+    o->setProperty ("sttProvider",    get ("sttProvider", "local"));
+    o->setProperty ("whisperModel",   get ("whisperModel", "base"));
     o->setProperty ("sttUrl",         get ("sttUrl", "https://api.groq.com/openai/v1/audio/transcriptions"));
     o->setProperty ("sttModel",       get ("sttModel", "whisper-large-v3-turbo"));
     o->setProperty ("sttKeyMasked",   mask (get ("sttKey")));
@@ -38,6 +39,7 @@ juce::var AiSettings::toPublicJson() const
     o->setProperty ("voiceSource",    get ("voiceSource", "mic"));
     o->setProperty ("voiceLanguage",  get ("voiceLanguage", "pt"));
     o->setProperty ("presetsFolder",  presetsFolder().getFullPathName());
+    o->setProperty ("simpleMode",     get ("simpleMode", "1"));
     return juce::var (o);
 }
 
@@ -73,7 +75,7 @@ O usuário descreve o som que quer (às vezes por voz, com erros de transcriçã
   "reply": "resposta curta (1-3 frases) explicando o que mudou e por quê",
   "preset": "nome exato de um preset de fábrica para carregar ANTES das mudanças (opcional)",
   "changes": { "id_do_parametro": valor, ... },
-  "actions": ["analyze_beat" | "analyze_voice" | "learn_noise" | "auto_mix" | "reset_lufs"]  (opcional)
+  "actions": ["analyze_beat" | "analyze_voice" | "learn_noise" | "auto_mix" | "diagnose" | "render" | "reference" | "reset_lufs"]  (opcional)
 }
 
 REGRAS
@@ -84,6 +86,14 @@ REGRAS
 - Se pedirem estilo de um artista, faça uma aproximação de CARACTERÍSTICAS sonoras (afinação, brilho, espaço, delay), sem prometer que vai soar idêntico. Se existir preset parecido, use "preset" e refine com "changes".
 - Se o pedido for ambíguo, aplique a interpretação mais provável e diga isso no reply.
 - "Mixa pra mim / deixa perfeito / identifica o beat" → actions ["analyze_beat","analyze_voice","auto_mix"].
+- "Analisa minha mix / tá embolando? / tá bom?" → actions ["diagnose"] (o plugin mede voz x beat e mostra nota 0–100).
+- "Gera/exporta a mix pra eu ouvir" → actions ["render"]. "Copia o som da referência" → actions ["reference"].
+- Se o pedido for estilo de um artista que está em "artistas_conhecidos", use "preset" com o nome EXATO dele e refine com "changes".
+  Se NÃO estiver, monte você mesmo a receita em "changes" a partir do que você sabe do som desse artista (afinação, brilho, saturação,
+  espaço, tipo de delay/reverb, largura) partindo do estilo mais próximo — e diga no reply que é uma aproximação.
+- O contexto pode trazer "anexos" (beat, voice, reference) com BPM, tom, LUFS, crest, espectro em 32 bandas (20 Hz–20 kHz, log) e
+  "estilo_provavel". Pode vir também uma IMAGEM com os espectrogramas. USE ISSO: ex. beat com 808 forte → passa-altas da voz 110–120 Hz;
+  beat cheio em 2–5 kHz → presença da voz mais alta (4–5 kHz) + ar; voz com lama → corte 250–400 Hz; afine no tom do beat.
 - Nunca invente parâmetros. Nunca devolva markdown.
 
 CONHECIMENTO DE MIXAGEM (use como base)
@@ -96,6 +106,22 @@ CONHECIMENTO DE MIXAGEM (use como base)
 - "Saturação nos agudos" = PRISMA bandas 4/5 (sat_b4_amt, sat_b5_amt) + sat_on 1; nos graves = bandas 1/2; "quente" = tipo Válvula/Fita.
 - "Embolado/abafado" = cortar eq_m1 ~250–400 Hz; "nasal/fanho" = cortar ~800–1200 Hz; "ardido/estridente" = cortar 2.5–4 kHz e/ou mais de-esser; "fino" = mais grave em 150–250 Hz.
 - Master: limiter teto -1 dBTP; streaming ≈ -14 LUFS; trap/funk ≈ -9 a -7 LUFS (lim_gain). Glue 2:1 com 1–3 dB de redução.
+
+RECEITAS POR ESTILO (pesquisa: guias de engenheiros e manuais)
+- Trap: HPF 110–130 Hz; lama −3 a −5 dB em 200–400 Hz; nasal −2 dB 0,8–1,2 kHz; compressão 6–10:1 com 6–10 dB de redução, ataque 3–8 ms, release 40–80 ms;
+  de-esser 5–7 kHz antes do autotune; presença +2–3 dB 2–5 kHz; ar +2–4 dB 10–16 kHz; saturação paralela 40–70%; plate curto 0,6–1,2 s, pré-delay 15–30 ms,
+  HP no retorno 300–500 Hz; delay 1/4 ou 1/8 (pontuado), 20–30% feedback, retorno HP 400 Hz / LP 8 kHz; ad-libs 6–10 dB abaixo, retune 5–8 ms, reverb 1,2–2 s.
+- R&B: HPF 60–80 Hz; corte 200–350 Hz; calor +1–2 dB 150–250 Hz; compressão 2–3:1, ataque 15–30 ms, release 80–150 ms, 3–5 dB; de-esser 3–5 dB;
+  saturação de fita 10–20%; plate/hall 1,8–3 s, pré-delay 30–60 ms, damping acima de 6–8 kHz; delay 1/8 com high-cut 4–6 kHz; dobras 30–50% L/R.
+- Plug: retune médio; HPF 70–110 Hz; compressão 3–4:1 média; ar 10–12 kHz depois do de-esser; delay 1/4 ou 1/8 pontuado filtrado; reverb largo com ducking.
+- Drill (UK/NY): HPF ~90 Hz; compressão em 2 estágios (2:1 lento + 1–2 dB rápido); saturação 5–10%; slap mono 80–120 ms filtrado 150 Hz–6 kHz;
+  plate 0,6–1 s com pré-delay 20–50 ms só no hook; efeito telefone 300 Hz–3 kHz em palavras pontuais.
+- Funk BR: voz estourada e na frente: VCA forte, presença 2,5–3 kHz +4 dB, saturação de transistor, reverb mínimo, master −7 a −5 LUFS.
+- Pop: compressão em série (VCA + opto), presença +2 dB, ar 10–16 kHz, autotune transparente 20–30 ms, dobras e plate médio 1,5 s.
+- Reggae/dub: voz quente (topo levemente escuro), FET médio, saturação de fita, eco de fita escuro (repetições altas, retorno 300 Hz–4 kHz),
+  reverb de mola/câmara esparso, throws no fim das frases.
+- Masterização: streaming normaliza (Spotify −14, YouTube ~−13, Apple −16 LUFS); true peak −1 dBTP; trap/funk comerciais costumam ir a −9…−6 LUFS;
+  glue 2:1–4:1 com ≤3 dB de redução; grave mono abaixo de ~150 Hz; alargar só acima de ~2 kHz.
 
 REFERÊNCIAS DE ESTILO (aproximações de características, não cópias)
 - Trap melódico cearense / 30PRAUM (ex.: Matuê): autotune melódico rápido no tom (10–20 ms), voz brilhante e na cara, delay 1/4 pontuado com ducking, plate médio, doubler sutil.
@@ -142,18 +168,28 @@ static juce::String stripFences (juce::String s)
 // =============================================================================
 //  Claude
 // =============================================================================
-AiResult AiClient::askClaude (const AiSettings& s, const juce::String& userText, const juce::String& contextJson, const juce::String& spec)
+AiResult AiClient::askClaude (const AiSettings& s, const juce::String& userText, const juce::String& contextJson, const juce::String& spec, const juce::String& png)
 {
     const auto key = s.get ("claudeKey");
     if (key.isEmpty()) { AiResult r; r.error = "Nenhuma chave da API do Claude configurada (⚙ Configurações)."; return r; }
 
     auto* msg = new juce::DynamicObject(); msg->setProperty ("role", "user");
-    msg->setProperty ("content", "ESTADO ATUAL DO PLUGIN (JSON):\n" + contextJson + "\n\nPEDIDO DO USUÁRIO:\n" + userText);
+    const juce::String text = "ESTADO ATUAL DO PLUGIN (JSON):\n" + contextJson + "\n\nPEDIDO DO USUÁRIO:\n" + userText;
+    if (png.isNotEmpty())
+    {   // o Claude "vê" o som: espectrograma do beat/voz/referência anexados
+        auto* src = new juce::DynamicObject(); src->setProperty ("type", "base64"); src->setProperty ("media_type", "image/png"); src->setProperty ("data", png);
+        auto* img = new juce::DynamicObject(); img->setProperty ("type", "image"); img->setProperty ("source", juce::var (src));
+        auto* txt = new juce::DynamicObject(); txt->setProperty ("type", "text");
+        txt->setProperty ("text", "A imagem mostra espectrogramas dos áudios anexados (beat, voz, referência). Use-a junto com os números da análise.\n\n" + text);
+        juce::Array<juce::var> parts; parts.add (juce::var (img)); parts.add (juce::var (txt));
+        msg->setProperty ("content", parts);
+    }
+    else msg->setProperty ("content", text);
     juce::Array<juce::var> msgs; msgs.add (juce::var (msg));
 
     auto* body = new juce::DynamicObject();
     body->setProperty ("model", s.get ("claudeModel", "claude-haiku-5-5"));
-    body->setProperty ("max_tokens", 1500);
+    body->setProperty ("max_tokens", 2500);
     body->setProperty ("system", buildSystemPrompt (spec));
     body->setProperty ("messages", msgs);
 

@@ -46,9 +46,10 @@ public:
         tmpL.assign ((size_t) maxBlock, 0.0f); tmpR.assign ((size_t) maxBlock, 0.0f);
         dryL.assign ((size_t) maxBlock, 0.0f); dryR.assign ((size_t) maxBlock, 0.0f);
         gate.prepare (sr); nr.prepare (sr); tune.prepare (sr, lowLatency); eq.prepare (sr); deess.prepare (sr);
-        comp.prepare (sr); opto.prepare (sr); prisma.prepare (sr); air.prepare (sr); dbl.prepare (sr);
+        comp.prepare (sr); opto.prepare (sr); prisma.prepare (sr, maxBlock); air.prepare (sr); dbl.prepare (sr);
+        for (auto& a : ag) a.prepare (sr, maxBlock);
         delay.prepare (sr); reverb.prepare (sr); glue.prepare (sr); tilt.prepare (sr); imager.prepare (sr);
-        limiter.prepare (sr, lowLatency ? 16 : (int) (0.004 * sr)); loud.prepare (sr);
+        limiter.prepare (sr, lowLatency ? 16 : (int) (0.0015 * sr)); loud.prepare (sr);
         for (auto* m : { &pmInL, &pmInR, &pmOutL, &pmOutR }) m->prepare (sr);
         inS.prepare (sr, 20); outS.prepare (sr, 20); mixS.prepare (sr, 20);
         // latência total constante p/ o host compensar; o dry do "Mix Geral" é atrasado igual
@@ -92,7 +93,8 @@ public:
         delay.setParams ({ p.on (P::DlySync), p.idx (P::DlyNote), p[P::DlyTime], p[P::DlyFeedback], p[P::DlyLowCut], p[P::DlyHighCut],
                            p[P::DlyDuck], p[P::DlyMod], p[P::DlyDrive], p[P::DlyWidth], p[P::DlyMix], p.idx (P::DlyMode), bpm });
         reverb.setParams ({ p.idx (P::RevType), p[P::RevSize], p[P::RevDecay], p[P::RevPredelay], p[P::RevDamp], p[P::RevLowCut],
-                            p[P::RevHighCut], p[P::RevMod], p[P::RevWidth], p[P::RevDuck], p[P::RevMix] });
+                            p[P::RevHighCut], p[P::RevMod], p[P::RevWidth], p[P::RevDuck], p[P::RevMix],
+                            p[P::RevDiff], p[P::RevEarly], p[P::RevBass] });
         glue.setParams (p[P::GlueThresh], p[P::GlueRatio], p[P::GlueRelease]);
         tilt.setParams (p[P::Tilt]); imager.setParams (p[P::ImgWidth], p.on (P::ImgMonoBass));
         limiter.setParams (p[P::LimGain], p[P::LimCeiling], p[P::LimRelease]);
@@ -129,12 +131,19 @@ public:
         if (pv.on (P::GateOn)) meters.grGate.store (gate.process (L, R, n)); else meters.grGate.store (0);
         if (! lowLatency) nr.process (L, R, n, pv.on (P::NrOn));
         tune.process (L, R, n, pv.on (P::TuneOn));
-        if (pv.on (P::EqOn))   eq.process (L, R, n);
-        meters.grDeess.store (pv.on (P::DsOn)   ? deess.process (L, R, n) : 0.0f);
-        meters.grComp.store  (pv.on (P::CompOn) ? comp.process (L, R, n)  : 0.0f);
-        meters.grOpto.store  (pv.on (P::OptoOn) ? opto.process (L, R, n)  : 0.0f);
-        if (pv.on (P::SatOn)) prisma.process (L, R, n);
-        if (pv.on (P::AirOn)) air.process (L, R, n);
+        const bool autoG = pv.on (P::AutoGain);
+        // cada módulo de cor/dinâmica tem casamento de volume (quando "Ganho Automático" está ligado)
+        auto colour = [&] (int idx, bool on, auto&& fn) -> float
+        {
+            if (! on) return 0.0f;
+            ag[idx].measureIn (L, R, n); const float r = fn(); ag[idx].apply (L, R, n, autoG); return r;
+        };
+        colour (0, pv.on (P::EqOn), [&] { eq.process (L, R, n); return 0.0f; });
+        meters.grDeess.store (pv.on (P::DsOn) ? deess.process (L, R, n) : 0.0f);
+        meters.grComp.store (colour (1, pv.on (P::CompOn), [&] { return comp.process (L, R, n); }));
+        meters.grOpto.store (colour (2, pv.on (P::OptoOn), [&] { return opto.process (L, R, n); }));
+        colour (3, pv.on (P::SatOn), [&] { prisma.process (L, R, n); return 0.0f; });
+        colour (4, pv.on (P::AirOn), [&] { air.process (L, R, n); return 0.0f; });
         // a partir daqui o sinal precisa ser estéreo (doubler/efeitos abrem a imagem)
         float* RR = R ? R : tmpR.data();
         if (! R) std::copy (L, L + n, RR);
@@ -203,7 +212,7 @@ private:
     ParamValues pv;
     Gate gate; NoiseReducer nr; PitchCorrector tune; Equalizer eq; DeEsser deess; Compressor comp; OptoCompressor opto;
     Prisma prisma; AirExciter air; Doubler dbl; Delay delay; Reverb reverb; GlueCompressor glue; Tilt tilt; Imager imager;
-    Limiter limiter; LoudnessMeter loud; PeakMeter pmInL, pmInR, pmOutL, pmOutR; Smoother inS, outS, mixS;
+    Limiter limiter; LoudnessMeter loud; AutoGain ag[5]; PeakMeter pmInL, pmInR, pmOutL, pmOutR; Smoother inS, outS, mixS;
     DelayLine dryDelayL, dryDelayR; std::vector<float> tmpL, tmpR, dryL, dryR;
     CaptureRing vocalLong, beatLong, vocalShort, beatShort, outShort; Decimator decV, decB;
 };

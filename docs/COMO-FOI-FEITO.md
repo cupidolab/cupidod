@@ -84,7 +84,19 @@ Além disso:
 
 **O que ainda não foi testado aqui:** o binário final dentro de um DAW. O ambiente onde desenvolvi não tem as bibliotecas gráficas/áudio do Linux para linkar o plugin completo; a primeira compilação completa acontece no GitHub Actions (Windows, macOS e Linux). Se algum passo do build falhar lá, o log mostra a linha exata para corrigir.
 
-## 6. Próximos passos sugeridos
+## 6. Versão 2 — o que mudou depois do teu teste
+
+| Problema que tu achou | Causa | Correção | Prova |
+|---|---|---|---|
+| Autotune puxando uma oitava abaixo | shifter granular sobrepunha pedaços fora de fase (voz-fantasma) e o detector às vezes confundia a oitava | **shifter pitch-síncrono** (pula exatamente 1 período da voz, com crossfade) + detector com continuidade, mediana e trava de ±1 semitom | `tools/test_tune.cpp` com voz sintética de formantes, vibrato e deslizes (grave e aguda): **0% de erro de oitava**, fantasma f0/2 entre −52 e −68 dB (inaudível) |
+| Plugins estourados | makeup/ganhos somando entre módulos | **ganho automático** por módulo (casa o volume de entrada e saída), padrões conservadores, **oversampling 2x** na saturação | com makeup +12 dB, Ar 80% e Prisma no máximo, a saída fica a **0,0 dB** da entrada |
+| Muito delay pra cantar ao vivo | latência 38 ms | redução de ruído com FFT 512, limiter com 1,5 ms, autotune novo | **19 ms (HQ)** e **5,8 ms (Ao vivo)** |
+| IA não ouvia o beat | só via sidechain | anexar beat/voz/referência (WAV, MP3, FLAC, AIFF, OGG), análise da faixa inteira (BPM, tom, LUFS, 32 bandas, 808, tercinas, contratempo), classificação de estilo, diagnóstico voz x beat com nota, render antes/depois, espectrograma enviado ao Claude | `tools/test_style.cpp` |
+| Só sabia 3 artistas | presets fixos | **130 artistas** + 13 estilos + 16 salas de reverb a partir da pesquisa; artista desconhecido → Claude ou referência | validação automática: todos os valores dentro das faixas |
+| Voz por comando não funcionava | dependia de chave do Groq | **whisper.cpp offline** dentro do plugin (baixa o modelo uma vez); fallback para a entrada do canal se o mic estiver ocupado | compila com whisper.cpp v1.9.2 |
+| Interface feia / muita coisa | tudo exposto | **tema azul**, **Modo Simples** por padrão, navegador de artistas, reverb em **cilindro 3D** | testes no Chrome sem erros |
+
+## 7. Próximos passos sugeridos
 
 - Formantes no autotune (para transposições grandes soarem naturais).
 - Oversampling 2x/4x opcional no Prisma e no limiter (true peak).

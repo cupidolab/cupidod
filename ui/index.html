@@ -11,8 +11,8 @@
   <header class="top">
     <div class="brand" title="CUPIDO — suíte vocal com IA">
       <svg class="wordmark" viewBox="0 0 168 30" aria-label="CUPIDO">
-        <text x="0" y="25" fill="#F3E8F6" font-family="Segoe UI Black, Arial Black, Helvetica Neue, sans-serif" font-weight="900" font-size="27" letter-spacing="2">CUPID</text>
-        <path transform="translate(118 3) scale(1.05)" fill="#FF3E86" d="M12 23s-10-6.2-10-13.1C2 6 4.6 3.5 7.6 3.5c2 0 3.5 1 4.4 2.6.9-1.6 2.4-2.6 4.4-2.6 3 0 5.6 2.5 5.6 6.4C22 16.8 12 23 12 23z"/>
+        <text x="0" y="25" fill="#E8EEFF" font-family="Segoe UI Black, Arial Black, Helvetica Neue, sans-serif" font-weight="900" font-size="27" letter-spacing="2">CUPID</text>
+        <path class="heart" transform="translate(118 3) scale(1.05)" fill="#FF4F9A" d="M12 23s-10-6.2-10-13.1C2 6 4.6 3.5 7.6 3.5c2 0 3.5 1 4.4 2.6.9-1.6 2.4-2.6 4.4-2.6 3 0 5.6 2.5 5.6 6.4C22 16.8 12 23 12 23z"/>
         <path d="M108 26 L162 2" stroke="#FFC56A" stroke-width="2.2" stroke-linecap="round"/>
         <path d="M162 2 l-7 0.6 l3.6 5.4z" fill="#FFC56A"/>
       </svg>
@@ -31,6 +31,7 @@
     <div class="ab" title="Comparar duas versões (A/B)"><button id="slotA" class="on">A</button><button id="slotB">B</button></div>
     <button class="ibtn" id="abCopy" title="Copiar a versão atual para a outra">A→B</button>
 
+    <div class="mode-switch" role="group" aria-label="Modo da interface"><button id="viewSimple" class="on">Simples</button><button id="viewPro">Pro</button></div>
     <div class="spacer"></div>
     <span class="mode-pill" id="modePill" title="Clique para alternar"><b>Mixagem HQ</b></span>
     <button class="ibtn" id="helpBtn" title="Ajuda e atalhos" aria-label="Ajuda">?</button>
@@ -83,8 +84,13 @@
     </div>
     <div class="chat" id="chat" aria-live="polite"></div>
     <div class="chips" id="chips"></div>
+    <div class="attach-row" id="attachRow" aria-label="Anexos">
+      <button data-kind="beat" title="Anexar o beat (WAV/MP3)">📎 Beat</button>
+      <button data-kind="voice" title="Anexar tua voz seca (acapella)">🎤 Minha voz</button>
+      <button data-kind="reference" title="Anexar uma música de referência">⭐ Referência</button>
+    </div>
     <div class="composer">
-      <textarea id="input" placeholder="Ex.: bota mais saturação nos agudos e um delay mais demorado" aria-label="Mensagem para o Cupidinho"></textarea>
+      <textarea id="input" placeholder="Ex.: estilo Travis Scott, delay mais demorado, analisa minha mix…" aria-label="Mensagem para o Cupidinho"></textarea>
       <button class="mic" id="micBtn" title="Segura e fala (ou tecla V)" aria-label="Comando de voz"><svg viewBox="0 0 16 16"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3 8a5 5 0 0 0 10 0M8 13v2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
       <button class="send" id="sendBtn">Enviar</button>
     </div>
@@ -95,9 +101,15 @@
 <div class="overlay" id="settingsModal"><div class="modal" role="dialog" aria-label="Configurações"></div></div>
 <div class="overlay" id="helpModal"><div class="modal" role="dialog" aria-label="Ajuda"></div></div>
 <div class="toast" id="toast"></div>
+<div class="drop-overlay" id="dropOverlay">
+  <div data-kind="beat"><b>📎 Beat</b><small>solta aqui</small></div>
+  <div data-kind="voice"><b>🎤 Minha voz</b><small>acapella seca</small></div>
+  <div data-kind="reference"><b>⭐ Referência</b><small>música do artista</small></div>
+</div>
 
 <script src="params.js"></script>
 <script src="presets.js"></script>
+<script src="knowledge.js"></script>
 <script src="bridge.js"></script>
 <script src="agent.js"></script>
 <script src="app.js"></script>

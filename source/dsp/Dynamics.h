@@ -20,6 +20,39 @@ inline float compGainReductionDb (float inDb, float thresh, float ratio, float k
     return over > 0.0f ? slope * over : 0.0f;
 }
 
+
+// -----------------------------------------------------------------------------
+//  Ganho automático (casamento de volume entrada x saída de um módulo).
+//  Mede a energia antes e depois (média lenta, ~1.5 s, ignorando silêncio) e
+//  compensa a diferença — tu ouve a mudança de TIMBRE, não "mais alto = melhor".
+// -----------------------------------------------------------------------------
+class AutoGain
+{
+public:
+    void prepare (double sampleRate, int maxBlock) { sr = sampleRate; gain = 1; eIn = eOut = 0; (void) maxBlock; }
+    void reset() { gain = 1; eIn = eOut = 0; }
+    /** Chame com o sinal ANTES de processar o módulo. */
+    void measureIn (const float* L, const float* R, int n) { lastIn = energy (L, R, n); }
+    /** Chame DEPOIS do módulo: aplica a compensação (rampa suave dentro do bloco). */
+    void apply (float* L, float* R, int n, bool enabled)
+    {
+        const double eo = energy (L, R, n);
+        const double a = std::exp (-(double) n / (1.5 * sr));
+        if (lastIn > 1e-7)                                   // > ~-70 dBFS: atualiza as médias
+        { eIn = a * eIn + (1 - a) * lastIn; eOut = a * eOut + (1 - a) * eo; }
+        float target = 1.0f;
+        if (enabled && eIn > 0 && eOut > 0) target = clampf ((float) std::sqrt (eIn / eOut), 0.18f, 5.6f);   // ±15 dB
+        const float g0 = gain, step = (target - g0) / (float) std::max (1, n);
+        for (int i = 0; i < n; ++i) { const float g = g0 + step * (float) (i + 1); L[i] *= g; if (R) R[i] *= g; }
+        gain = target;
+    }
+    float currentDb() const { return gainToDb (gain); }
+private:
+    static double energy (const float* L, const float* R, int n)
+    { double s = 0; for (int i = 0; i < n; ++i) { s += (double) L[i] * L[i]; if (R) s += (double) R[i] * R[i]; } return s / std::max (1, n); }
+    double sr = 48000, eIn = 0, eOut = 0, lastIn = 0; float gain = 1;
+};
+
 // -----------------------------------------------------------------------------
 //  Noise Gate / Expander com histerese e hold
 // -----------------------------------------------------------------------------

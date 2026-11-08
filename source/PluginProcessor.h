@@ -6,6 +6,7 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "Params.h"
 #include "dsp/Chain.h"
+#include "MediaLab.h"
 
 class CupidoProcessor : public juce::AudioProcessor,
                         private juce::AsyncUpdater
@@ -53,6 +54,10 @@ public:
 
     /** Nome do último preset carregado (salvo junto com a sessão). */
     juce::String currentPresetName { "Init" };
+
+    /** Arquivos anexados (beat, voz, referência) — vivem no processador, sobrevivem ao fechar a janela. */
+    cupido::MediaLab lab;
+    cupido::ParamValues currentValues() const { cupido::ParamValues v; for (int i = 0; i < cupido::kNumParams; ++i) v.v[i] = raw[(size_t) i]->load(); return v; }
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
 

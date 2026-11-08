@@ -6,7 +6,7 @@ O Cupidinho tem três "cérebros". Tu pode usar só o primeiro (grátis, offline
 |---|---|---|
 | **Modo local** | nada — já vem ligado | Entende centenas de jeitos de pedir em português/gíria, presets por estilo, auto-mix com análise do beat |
 | **Claude (Anthropic)** | chave da API do Claude | Entende qualquer frase, combina pedidos complexos, explica o que fez, raciocina sobre o estado inteiro da mix |
-| **Voz** | chave do Groq (grátis) ou OpenAI, ou servidor local | Segura o microfone e fala em vez de digitar |
+| **Voz** | nada — offline por padrão (baixa o modelo uma vez); opcional Groq/OpenAI | Segura o microfone e fala em vez de digitar |
 
 ---
 
@@ -50,7 +50,13 @@ A interface valida (limita cada valor ao mínimo/máximo), aplica, pinta em dour
 
 ## 2. Ligando os comandos de voz
 
-### Opção A — Groq (recomendado: grátis e muito rápido)
+### Padrão — offline no teu PC (não precisa configurar nada)
+Na primeira vez que tu segurar o microfone, o CUPIDO baixa o modelo de voz (Whisper "base", ~150 MB) para `Documentos/CUPIDO/Modelos`.
+O status do Cupidinho mostra o progresso. Depois disso funciona **sem internet e sem chave**. Se o teu português for muito rápido ou com muita gíria,
+troque para o modelo **Small** em ⚙ → Voz (470 MB, entende melhor). Se o microfone do sistema estiver ocupado pelo DAW (ASIO), o plugin passa a ouvir
+pela entrada do próprio canal automaticamente — é só armar a faixa.
+
+### Opção A — Groq (online, grátis e muito rápido)
 1. Entra em **console.groq.com/keys** e cria uma chave (começa com `gsk_`).
 2. No CUPIDO: ⚙ → **Voz** → Transcrição: **Groq Whisper**.
 3. Cola a chave em **Chave da transcrição** → **Salvar**.
@@ -74,11 +80,21 @@ Qualquer servidor compatível com a API de transcrição da OpenAI funciona — 
 
 ---
 
-## 3. Fazendo o Cupidinho "ouvir" o beat
+## 3. Fazendo o Cupidinho "ouvir" o beat e a tua voz
 
+**Jeito fácil:** arrasta os arquivos para a janela do plugin (ou usa 📎 Beat / 🎤 Minha voz / ⭐ Referência).
+Exporta do DAW o beat e a voz seca começando no mesmo ponto. Aí:
+- **Mixar tudo pra mim:** detecta o estilo do beat (com % de certeza), aplica a receita, afina no tom, trava o delay no BPM e corrige o que encontrar.
+- **Analisar minha mix:** renderiza a tua voz com os ajustes atuais, compara com o beat em 32 bandas e dá nota de 0–100: embolando (200–450 Hz), voz escondida (1–5 kHz), ardida, nasal, sem ar, ruído, sibilância, irregular.
+- **Gerar mix pra ouvir:** salva `CUPIDO-mix-*.wav` (depois) e `CUPIDO-antes-*.wav` em `Documentos/CUPIDO/Mixes`, com players no chat.
+- **Copiar a referência:** usa a música do artista para igualar estilo, brilho, largura e volume.
+
+Com o Claude ligado, ele recebe também uma **imagem dos espectrogramas** dos arquivos anexados e os números da análise, então "vê" o beat e a voz.
+
+**Jeito ao vivo (sidechain):**
 1. Manda o beat pro **sidechain** do CUPIDO (veja o README para cada DAW).
 2. Dá play uns 10 segundos.
-3. Clica **Ouvir o beat** ou diz "identifica o beat".
+3. Pede "identifica o beat" ou "mixa pra mim".
 
 Ele mede **BPM** (fluxo espectral + autocorrelação), **tom** (cromagrama + perfis de Krumhansl), **balanço espectral** e **dinâmica**, e oferece "Afinar nesse tom" e "Mixar com base nisso".
 

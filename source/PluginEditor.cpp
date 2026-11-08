@@ -59,8 +59,9 @@ static juce::var toVar (const AnalysisResult& r)
     o->setProperty ("minor", r.minor); o->setProperty ("keyConfidence", r.keyConfidence);
     o->setProperty ("rmsDb", r.rmsDb); o->setProperty ("peakDb", r.peakDb); o->setProperty ("crestDb", r.crestDb);
     o->setProperty ("noiseFloorDb", r.noiseFloorDb); o->setProperty ("sibilanceDb", r.sibilanceDb);
-    juce::Array<juce::var> b, bd; for (int i = 0; i < 6; ++i) { b.add (r.bands[i]); bd.add (r.bandsDb[i]); }
-    o->setProperty ("bands", b); o->setProperty ("bandsDb", bd);
+    juce::Array<juce::var> b, bd, sp; for (int i = 0; i < 6; ++i) { b.add (r.bands[i]); bd.add (r.bandsDb[i]); }
+    for (int i = 0; i < 32; ++i) sp.add (juce::roundToInt (r.spectrum[i] * 10.0f) / 10.0);
+    o->setProperty ("bands", b); o->setProperty ("bandsDb", bd); o->setProperty ("spectrum", sp);
     return juce::var (o);
 }
 
@@ -141,6 +142,20 @@ juce::WebBrowserComponent::Options CupidoEditor::buildOptions()
                     finishAsync (a, done, juce::var (o));
                 });
             })
+        .withNativeFunction ("pickAudio", [this] (const juce::Array<juce::var>& a, Completion done) { pickAudio (a[0].toString(), std::move (done)); })
+        .withNativeFunction ("loadAudioData", [this] (const juce::Array<juce::var>& a, Completion done)
+            {
+                const auto kind = a[0].toString(), name = a[1].toString(), b64 = a[2].toString(); auto* lab = &proc.lab;
+                runAudioJob (kind, [lab, kind, name, b64] { return lab->loadFromBase64 (kind, name, b64); }, std::move (done));
+            })
+        .withNativeFunction ("clearAudio", [this] (const juce::Array<juce::var>& a, Completion done) { proc.lab.clear (a[0].toString()); done (true); })
+        .withNativeFunction ("getMedia", [this] (const juce::Array<juce::var>&, Completion done) { done (proc.lab.describeAll()); })
+        .withNativeFunction ("renderMix", [this] (const juce::Array<juce::var>&, Completion done)
+            {
+                auto* lab = &proc.lab; auto vals = proc.currentValues(); const double bpm = proc.getHostBpm(); auto a = alive;
+                pool().addJob ([lab, vals, bpm, a, done] { finishAsync (a, done, lab->renderMix (vals, bpm)); });
+            })
+        .withNativeFunction ("openMixesFolder", [] (const juce::Array<juce::var>&, Completion done) { cupido::MediaLab::mixesFolder().startAsProcess(); done (true); })
         .withNativeFunction ("listPresets", [this] (const juce::Array<juce::var>&, Completion done) { done (listPresets()); })
         .withNativeFunction ("savePreset", [this] (const juce::Array<juce::var>& a, Completion done)
             { done (a.size() >= 2 && savePreset (a[0].toString(), a[1].toString())); })
@@ -159,6 +174,18 @@ std::optional<juce::WebBrowserComponent::Resource> CupidoEditor::getResource (co
 {
     auto path = url.fromFirstOccurrenceOf ("/", false, false).upToFirstOccurrenceOf ("?", false, false);
     if (path.isEmpty() || url == "/") path = "index.html";
+    if (path.startsWith ("media/"))
+    {   // mixes renderizadas (player antes/depois)
+        const auto nm = path.fromFirstOccurrenceOf ("media/", false, false);
+        auto f = cupido::MediaLab::mixesFolder().getChildFile (juce::File::createLegalFileName (nm));
+        if (nm.startsWith ("CUPIDO-") && nm.endsWithIgnoreCase (".wav") && f.existsAsFile())
+        {
+            juce::MemoryBlock mb; f.loadFileAsData (mb);
+            std::vector<std::byte> bytes (mb.getSize()); std::memcpy (bytes.data(), mb.getData(), mb.getSize());
+            return juce::WebBrowserComponent::Resource { std::move (bytes), "audio/wav" };
+        }
+        return std::nullopt;
+    }
     const auto file = path.fromLastOccurrenceOf ("/", false, false);
 
     for (int i = 0; i < CupidoUI::namedResourceListSize; ++i)
@@ -209,6 +236,8 @@ juce::var CupidoEditor::getSpec()
     info->setProperty ("latency", proc.getLatencySamples());
     info->setProperty ("preset", proc.currentPresetName);
     info->setProperty ("host", juce::PluginHostType().getHostDescription());
+    info->setProperty ("localVoice", cupido::LocalSpeech::isAvailable());
+    info->setProperty ("isPlugin", true);
 
     auto* res = new juce::DynamicObject();
     res->setProperty ("spec", spec); res->setProperty ("values", juce::var (values)); res->setProperty ("info", juce::var (info));
@@ -271,10 +300,11 @@ juce::String CupidoEditor::compactSpec() const
 
 void CupidoEditor::askAI (const juce::String& text, const juce::String& context, Completion done)
 {
-    auto spec = compactSpec(); auto s = settings; auto a = alive;
-    pool().addJob ([text, context, spec, s, a, done]
+    auto spec = compactSpec(); auto s = settings; auto a = alive; auto* lab = &proc.lab;
+    pool().addJob ([text, context, spec, s, a, done, lab]
     {
-        auto r = AiClient::askClaude (*s, text, context, spec);
+        const auto png = lab->spectrogramPngBase64();     // o Claude "vê" o beat/voz anexados
+        auto r = AiClient::askClaude (*s, text, context, spec, png);
         auto* o = new juce::DynamicObject();
         o->setProperty ("ok", r.ok); o->setProperty ("error", r.error); o->setProperty ("reply", r.text); o->setProperty ("data", r.json);
         finishAsync (a, done, juce::var (o));
@@ -292,7 +322,12 @@ void CupidoEditor::startVoice (const juce::String& source, Completion done)
     else
     {
         const auto err = mic.start();
-        o->setProperty ("ok", err.isEmpty()); o->setProperty ("error", err);
+        if (err.isEmpty()) o->setProperty ("ok", true);
+        else
+        {   // microfone ocupado pelo DAW (ex.: ASIO exclusivo): usa a entrada do próprio canal
+            voiceSourceInUse = "channel"; proc.startChannelVoiceCapture();
+            o->setProperty ("ok", true); o->setProperty ("note", "Microfone do sistema ocupado — ouvindo pela entrada do canal (arma a faixa pra gravar).");
+        }
     }
     done (juce::var (o));
 }
@@ -306,15 +341,67 @@ void CupidoEditor::stopVoice (Completion done)
         done (juce::var (o)); return;
     }
     normalisePeak (audio);
+    auto s = settings; auto a = alive;
+    const auto provider = s->get ("sttProvider", "local");
+    if (provider == "local" || provider == "browser")
+    {
+        const auto model = s->get ("whisperModel", "base"), lang = s->get ("voiceLanguage", "pt");
+        pool().addJob ([audio, model, lang, a, done]
+        {
+            auto& ls = cupido::LocalSpeech::instance();
+            auto* o = new juce::DynamicObject();
+            if (! cupido::LocalSpeech::isAvailable()) { o->setProperty ("ok", false); o->setProperty ("error", "Voz offline indisponível nesta versão — escolha Groq ou OpenAI em ⚙."); }
+            else
+            {
+                if (! ls.hasModel (model))
+                {
+                    const auto err = ls.download (model);      // primeira vez: baixa o modelo (~150 MB no "base")
+                    if (err.isNotEmpty()) { o->setProperty ("ok", false); o->setProperty ("error", err); finishAsync (a, done, juce::var (o)); return; }
+                }
+                juce::String err; const auto text = ls.transcribe (audio, model, lang, err);
+                o->setProperty ("ok", text.isNotEmpty()); o->setProperty ("text", text); o->setProperty ("error", err);
+            }
+            finishAsync (a, done, juce::var (o));
+        });
+        return;
+    }
     auto wav = encodeWav16 (audio, 16000);
     juce::MemoryBlock mb (wav.data(), wav.size());
-    auto s = settings; auto a = alive;
     pool().addJob ([mb, s, a, done]
     {
         auto r = AiClient::transcribe (*s, mb);
         auto* o = new juce::DynamicObject(); o->setProperty ("ok", r.ok); o->setProperty ("text", r.text); o->setProperty ("error", r.error);
         finishAsync (a, done, juce::var (o));
     });
+}
+
+// -----------------------------------------------------------------------------
+//  Anexos de áudio
+// -----------------------------------------------------------------------------
+void CupidoEditor::runAudioJob (const juce::String& kind, std::function<juce::String()> job, Completion done)
+{
+    auto a = alive; auto* lab = &proc.lab;
+    pool().addJob ([job, kind, a, done, lab]
+    {
+        const auto err = job();
+        auto* o = new juce::DynamicObject(); o->setProperty ("ok", err.isEmpty()); o->setProperty ("error", err);
+        if (err.isEmpty()) o->setProperty ("media", lab->describe (kind));
+        finishAsync (a, done, juce::var (o));
+    });
+}
+
+void CupidoEditor::pickAudio (const juce::String& kind, Completion done)
+{
+    const auto title = kind == "beat" ? "Escolha o beat" : kind == "voice" ? "Escolha tua voz (acapella)" : "Escolha a música de referência";
+    chooser = std::make_unique<juce::FileChooser> (title, juce::File::getSpecialLocation (juce::File::userMusicDirectory), "*.wav;*.mp3;*.flac;*.aif;*.aiff;*.ogg;*.m4a");
+    auto* lab = &proc.lab;
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+        [this, kind, lab, done] (const juce::FileChooser& fc)
+        {
+            const auto file = fc.getResult();
+            if (! file.existsAsFile()) { auto* o = new juce::DynamicObject(); o->setProperty ("ok", false); o->setProperty ("cancelled", true); done (juce::var (o)); return; }
+            runAudioJob (kind, [lab, kind, file] { return lab->load (kind, file); }, done);
+        });
 }
 
 // -----------------------------------------------------------------------------
@@ -381,6 +468,7 @@ void CupidoEditor::timerCallback()
     mt->setProperty ("noiseProfile", proc.getChain().hasNoiseProfile());
     mt->setProperty ("mic", mic.level());
     mt->setProperty ("latency", proc.getLatencySamples());
+    mt->setProperty ("dl", cupido::LocalSpeech::instance().isDownloading() ? cupido::LocalSpeech::instance().downloadProgress() : -1.0f);
     o->setProperty ("m", juce::var (mt));
 
     if (frame % 2 == 0)

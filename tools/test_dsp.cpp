@@ -170,6 +170,20 @@ int main()
         CHECK (spec2[58] > hiB + 3, "Prisma agudos: banda ~10k %.1f -> %.1f dB", hiB, spec2[58]);
     }
 
+    // 9) Ganho automático: com EQ, compressor, opto, prisma e ar ligados, o volume não pode "estourar"
+    {
+        VocalChain c; c.prepare (SR, BLOCK, false); auto p = allOff();
+        for (P q : { P::EqOn, P::CompOn, P::OptoOn, P::SatOn, P::AirOn }) p[q] = 1;
+        p[P::CompMakeup] = 12; p[P::OptoGain] = 8; p[P::AirHigh] = 80; p[P::AirMid] = 60; p[P::SatB4Amt] = 8; p[P::SatB5Amt] = 8; p[P::SatDrive] = 80; p[P::EqHighGain] = 8;
+        p[P::AutoGain] = 1; c.setParams (p, 120);
+        auto L = voice (196.0, 8.0, 30); auto R = L; const float before = rmsDb (L, (size_t) (SR * 4), L.size());
+        run (c, L, R); const float after = rmsDb (L, (size_t) (SR * 4), L.size());
+        CHECK (std::abs (after - before) < 2.0f, "ganho automático: entrada %.1f dB -> saída %.1f dB (mesmo com makeup +12, ar 80%%, prisma no talo)", before, after);
+        p[P::AutoGain] = 0; VocalChain c2; c2.prepare (SR, BLOCK, false); c2.setParams (p, 120);
+        auto L2 = voice (196.0, 8.0, 30); auto R2 = L2; run (c2, L2, R2);
+        std::printf ("  info sem ganho automático o mesmo ajuste daria %.1f dB (diferença %+.1f dB)\n", rmsDb (L2, (size_t) (SR * 4), L2.size()), rmsDb (L2, (size_t) (SR * 4), L2.size()) - before);
+    }
+
     std::printf ("\n%s (%d falha(s))\n", failures ? "ALGUNS TESTES FALHARAM" : "TODOS OS TESTES PASSARAM", failures);
     return failures ? 1 : 0;
 }

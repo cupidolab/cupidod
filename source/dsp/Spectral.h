@@ -11,7 +11,7 @@ namespace cupido
 class NoiseReducer
 {
 public:
-    static constexpr int kOrder = 10, kN = 1 << kOrder, kHop = kN / 4, kBins = kN / 2 + 1;
+    static constexpr int kOrder = 9, kN = 1 << kOrder, kHop = kN / 4, kBins = kN / 2 + 1;
 
     void prepare (double sampleRate)
     {

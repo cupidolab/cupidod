@@ -9,7 +9,7 @@ Plugin de voz completo (VST3 / AU / AAX / LV2 / Standalone) com um agente de IA,
 | Módulo | O que faz | Inspirado em |
 |---|---|---|
 | **LIMPA** | Noise gate + redução de ruído espectral (aprende o perfil do ruído ou rastreia sozinho) | iZotope RX Voice De-noise, gates clássicos |
-| **AFINA** | Autotune com tom/escala (8 escalas), velocidade, humanizar, intensidade, transposição ±12 | Antares Auto-Tune, Waves Tune Real-Time |
+| **AFINA** | Autotune pitch-síncrono (sem voz-fantasma/oitava errada), tom/escala (8 escalas), velocidade, humanizar, intensidade, transposição ±12, latência 5–7 ms | Antares Auto-Tune, Waves Tune Real-Time |
 | **EQ** | Passa-altas 24 dB/oct, shelf grave, 2 médios paramétricos, shelf agudo, passa-baixas — com pontos arrastáveis | FabFilter Pro-Q |
 | **SIBILA** | De-esser com frequência ajustável, modo split (EQ dinâmico) ou wide, e "ouvir S" | FabFilter Pro-DS |
 | **PUNCH** | Compressor com caráter Limpo / FET (1176) / VCA, joelho, makeup e paralelo | UREI 1176, dbx 160 |
@@ -18,10 +18,20 @@ Plugin de voz completo (VST3 / AU / AAX / LV2 / Standalone) com um agente de IA,
 | **AR** | Excitador dinâmico Mid Air / High Air (bandas passa-altas comprimidas em paralelo) | Slate Fresh Air |
 | **DOBRA** | Doubler de 2 ou 4 vozes com detune real, atraso e variação de timing | Waves Doubler |
 | **ECO** | Delay estéreo / ping-pong / mono / slap, sync com BPM, ducking, filtros e fita | Soundtoys EchoBoy, Valhalla Delay |
-| **ESPAÇO** | Reverb FDN 8 linhas: sala, plate, hall, câmara, ambiente; pré-delay, modulação, ducking | Valhalla Room / VintageVerb |
+| **ESPAÇO** | Reverb FDN 8 linhas com visual 3D: sala, plate, hall, câmara, ambiente; difusão, primeiras reflexões, grave x decay, pré-delay, modulação, ducking; 16 salas prontas | Fruity Reeverb 2, Valhalla Room |
 | **MASTER** | Glue (bus comp), tilt EQ, largura estéreo + grave mono, limiter com lookahead, LUFS (curto e integrado) | SSL Bus Comp, FabFilter Pro-L |
 
-Mais: **Cupidinho** (agente em português com gírias), **comandos de voz** (segura o microfone ou a tecla V), **"Ouvir o beat"** (detecta BPM e tom pelo sidechain), **auto-mix**, **24 presets** de estilo (trap BR, funk, rap, pop/R&B, efeitos, master), 6 **macros**, **A/B**, desfazer/refazer ilimitado e modo **Gravação** de baixa latência.
+Mais:
+- **Cupidinho:** agente em português com gírias.
+- **Comandos de voz offline:** segura o microfone ou a tecla V. O reconhecimento roda no próprio PC e não precisa de chave.
+- **Anexar beat, voz e referência:** o plugin descobre o estilo, o BPM e o tom.
+- **Análise da mix:** dá nota de 0 a 100 e diz se a voz tá embolando, escondida, ardida ou com ruído.
+- **Gerar mix:** cria a versão antes e depois pra tu ouvir.
+- **Copiar referência:** funciona com qualquer artista.
+- **130 presets de artista:** trap BR, funk, R&B, reggae, rap, trap gringo e pop.
+- **13 receitas de estilo** e **16 salas de reverb**, com o reverb num cilindro 3D.
+- **Modo Simples / Pro**, **ganho automático** (nada estoura), 6 **macros**, **A/B**, desfazer ilimitado.
+- **Modo Ao vivo:** cerca de 6 ms de latência.
 
 ## Como conseguir o instalador (sem precisar programar)
 
@@ -62,6 +72,10 @@ cmake --build build --config Release
    - Reaper: canais 3/4 da faixa da voz recebem um envio do beat.
    - Cubase / Studio One: ative o sidechain no plugin e envie o beat para ele.
 3. Dá play uns 10 segundos e pede ao Cupidinho: **"mixa pra mim"**.
+
+## Base de conhecimento
+
+Tudo que o Cupidinho sabe de mixagem e masterização por estilo, com as fontes, está em **[docs/BASE-DE-CONHECIMENTO.md](docs/BASE-DE-CONHECIMENTO.md)**.
 
 ## Inteligência artificial e voz
 

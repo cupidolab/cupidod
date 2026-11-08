@@ -39,7 +39,7 @@ class AiClient
 public:
     /** Pede ao Claude: userText + contexto (estado atual, análise) → JSON. Bloqueante: chamar em thread de fundo. */
     static AiResult askClaude (const AiSettings& s, const juce::String& userText, const juce::String& contextJson,
-                               const juce::String& paramSpecCompact);
+                               const juce::String& paramSpecCompact, const juce::String& pngBase64 = {});
 
     /** Transcreve WAV 16 kHz mono. Bloqueante: chamar em thread de fundo. */
     static AiResult transcribe (const AiSettings& s, const juce::MemoryBlock& wav);

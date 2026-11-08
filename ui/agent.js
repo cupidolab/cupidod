@@ -69,6 +69,35 @@ window.Agent = (function () {
     }
     return best ? { preset: best, word } : null;
   }
+  // ---------- artistas (base de conhecimento) ----------
+  function findArtist(t) {
+    const K = window.Knowledge; if (!K) return null;
+    let best = null, bestLen = 0;
+    for (const a of K.ARTISTS) {
+      const words = [a.name, ...(a.aliases || [])].map((w) => norm(w).trim()).filter((w) => w.length >= 2);
+      for (const w of words) {
+        if (w.length <= 3 && !new RegExp(` (estilo|do|da|de|tipo|igual|parecid\\w*|voz) (o |a )?${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} `).test(t)) continue;   // nomes curtos só com contexto
+        if (t.includes(" " + w + " ") && w.length > bestLen) { best = a; bestLen = w.length; }
+      }
+    }
+    return best;
+  }
+  function artistAsPreset(a) {
+    const K = window.Knowledge;
+    return { name: a.name, cat: "Artistas", desc: `Vibe ${K.STYLES[a.style].name}: ${a.vibe}. Aproximação de características, não cópia.`, values: K.artistPreset(a), tags: [] };
+  }
+  function findStyle(t) {
+    const K = window.Knowledge; if (!K) return null;
+    const map = [[/ (trap br|trap brasileiro|trap nacional) /, "trapbr"], [/ (drill) /, "drill"], [/ (plug|pluggnb|plugg) /, "plug"], [/ (r&b|rnb|r and b|erre e be) /, "rnb"],
+      [/ (funk melody|pop funk) /, "funkmelody"], [/ (phonk) /, "phonk"], [/ (funk|mandelao|baile) /, "funk"], [/ (pop) /, "pop"], [/ (reggae|dub|roots|dancehall) /, "reggae"],
+      [/ (boom bap|rap classico|rap) /, "rap"], [/ (rage) /, "rage"], [/ (sertanejo|piseiro|pisadinha) /, "sertanejo"], [/ (trap) /, "trap"]];
+    for (const [re, k] of map) if (re.test(t)) return k;
+    return null;
+  }
+  function styleAsPreset(k) {
+    const K = window.Knowledge, st = K.STYLES[k];
+    return { name: "Estilo " + st.name, cat: "Estilos", desc: st.tips, values: K.styleValues(k), tags: [] };
+  }
 
   // =========================================================================
   //  Interpretação local
@@ -87,19 +116,36 @@ window.Agent = (function () {
     const wantsBeat = has(t, / (identifica|analisa|ouve|escuta|le|detecta|reconhece) (o |a )?(beat|batida|instrumental|base)|qual (o |e o )?(tom|bpm)|tom do beat|bpm do beat|no tom do beat|afina no beat /);
     if (wantsMix) actions.push("analyze_beat", "analyze_voice", "auto_mix");
     else if (wantsBeat) actions.push("analyze_beat");
+    if (has(t, / (analisa|avalia|ouve|escuta|confere|julga|critica) (a |minha |a minha |o )?(mix|mixagem|voz|som|musica)|ta (embolando|embolado|bom|da hora|bala|ruim)|ficou (bom|da hora|bala|ruim)|o que (ta|esta) errado|nota da mix /)) actions.push("diagnose");
+    if (has(t, / (gera|gerar|renderiza|renderizar|exporta|exportar|faz|monta|cria) (a |uma )?(mix|mixagem|versao|bounce|previa)|me (manda|mostra) (a |uma )?mix /)) actions.push("render");
+    if (has(t, / (referencia|igual a musica|parecido com essa musica|copia o som) /)) actions.push("reference");
     if (has(t, / (aprende|aprender|captura|pega) (o )?(ruido|barulho|chiado)|perfil de ruido /)) { actions.push("learn_noise"); ctx.on("nr_on"); notes.push("vou aprender o ruído: fica 2 segundos em silêncio"); }
     if (has(t, / (masteriza|masterizar|masterizacao|master) /) && !preset) {
       preset = window.CUPIDO_PRESETS.find((p) => p.name === (has(t, / (spotify|streaming|youtube|dinamic) /) ? "Master Streaming -14" : has(t, / (quente|analogic|vintage) /) ? "Master Quente" : "Master Trap -8"));
       notes.push("modo master: glue, tilt e limiter no alvo de loudness");
     }
 
-    // -------- estilo / preset --------
+    // -------- artista / estilo / preset --------
+    if (!preset) {
+      const artist = findArtist(t);
+      if (artist) { preset = artistAsPreset(artist); notes.push(`montei a vibe de ${artist.name} (${artist.vibe}) — é uma aproximação das características do som`); }
+    }
+    if (!preset && has(t, / (estilo|tipo|vibe|genero|som de|pegada) /)) {
+      const st = findStyle(t);
+      if (st) { preset = styleAsPreset(st); notes.push(`apliquei a receita de ${window.Knowledge.STYLES[st].name}`); }
+    }
     if (!preset) {
       const found = findPreset(t);
-      const strongWords = ["matue", "tue", "30praum", "teto", "yunk", "vino", "yunk vino", "plug", "pluggnb", "drill", "rage", "funk", "mandelao", "t-pain", "tpain", "podcast", "fantasma", "boom bap"];
+      const strongWords = ["t-pain", "tpain", "podcast", "fantasma", "robo", "robotico", "telefone", "radio"];
       if (found && (has(t, / (estilo|tipo o|tipo a|igual|parecid\w*|que nem|vibe|voz d\w*|preset|som d\w*|jeito d\w*|referencia) /) || strongWords.includes(found.word) || found.word === norm(found.preset.name).trim())) {
         preset = found.preset; notes.push(`carreguei o preset "${preset.name}" (${preset.desc.split(".")[0].toLowerCase()})`);
       }
+    }
+    let unknownArtist = null;
+    if (!preset) {
+      const kw = t.search(/ (estilo|voz|igual|parecid\w*|que nem|tipo|vibe|jeito) /);
+      const m = kw >= 0 ? t.slice(kw).match(/ (?:do|da|de|dos|das) ([a-z0-9][a-z0-9 .'&-]{1,28}?)(?: e | com | mais | pra | no | na |\s*$)/) : null;
+      if (m && !findStyle(" " + m[1] + " ") && !/ (aberto|fechado|seco|molhado|robo|natural|grave|agudo|mais|menos|largo|alto|baixo|melodico|beat|musica|som) /.test(" " + m[1] + " ")) unknownArtist = m[1].trim();
     }
 
     // -------- quebra em frases ("e", vírgula, "também", "mas") --------
@@ -266,6 +312,9 @@ window.Agent = (function () {
       const mods = [["gate", "gate_on"], ["opto|la-?2a|la2a", "opto_on"], ["compressor|1176|fet", "comp_on"], ["prisma|spectre", "sat_on"], ["fresh air|excitador|exciter", "air_on"], ["limiter|limitador", "lim_on"], ["glue|cola", "glue_on"], ["eq|equalizador|equalizacao", "eq_on"]];
       for (const [re, id] of mods) if (new RegExp(` (liga|ativa|desliga|desativa|tira|bota|coloca) (o |a )?(${re}) `).test(c)) { const v = /desliga|desativa|tira/.test(c) ? 0 : 1; C.set(id, v); notes.push(`${v ? "liguei" : "desliguei"} ${re.split("|")[0]}`); matched = true; }
 
+      if (!matched && clauses.length === 1 && !preset && !actions.length && unknownArtist) {
+        return { unknownArtist, reply: `Ainda não tenho "${unknownArtist}" na minha base offline. Dois jeitos de resolver: 1) liga o Claude na ⚙ — ele conhece qualquer artista; 2) anexa uma música dele como Referência (📎) que eu copio o equilíbrio de graves e agudos, o brilho e o volume dela.`, changes: {}, actions: [] };
+      }
       if (!matched && clauses.length === 1 && !preset && !actions.length) {
         return { reply: pick(["Não peguei essa, mano. Tenta tipo: \"mais agudo\", \"delay mais longo\", \"autotune robótico\", \"estilo Teto\" ou \"mixa pra mim\".",
           "Bah, essa não entendi. Fala em termos de som: brilho, grave, delay, reverb, autotune, saturação, largura, volume…"]), changes: {} };
@@ -273,7 +322,7 @@ window.Agent = (function () {
     }
 
     const all = C.changes;   // o preset (se houver) é aplicado inteiro pela interface antes destas mudanças
-    if (!notes.length && actions.length) notes.push(actions.includes("auto_mix") ? "vou ouvir a voz e o beat e montar a mix" : "vou ouvir o beat");
+    if (!notes.length && actions.length) notes.push(actions.includes("auto_mix") ? "vou ouvir a voz e o beat e montar a mix" : actions.includes("diagnose") ? "vou analisar tua voz contra o beat" : actions.includes("render") ? "vou renderizar a mix pra tu ouvir" : actions.includes("reference") ? "vou comparar com a referência" : "vou ouvir o beat");
     const opener = pick(["Feito!", "Tá na mão!", "Bah, ficou zica!", "Pronto, tchê!", "Fechou!", "Mandei ver!"]);
     const uniq = [...new Set(notes)]; notes.length = 0; notes.push(...uniq);
     return { preset, changes: all, actions, notes, reply: notes.length ? `${opener} ${capital(notes.join("; "))}.` : "Beleza." };
@@ -283,55 +332,41 @@ window.Agent = (function () {
   const capital = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
   // =========================================================================
-  //  AUTO-MIX a partir da análise
+  //  AUTO-MIX: estilo do beat + tom/BPM + diagnóstico voz x beat
   // =========================================================================
-  function autoMix(voice, beat, values, hostBpm) {
-    const C = makeCtx(values); const notes = [];
-    const b = beat && beat.valid ? beat : null, v = voice && voice.valid ? voice : null;
-
-    // tom
-    const keySrc = b && b.keyConfidence > 0.3 ? b : (v && v.keyConfidence > 0.3 ? v : (b || v));
-    if (keySrc && keySrc.key >= 0) {
-      C.on("tune_on"); C.set("tune_key", keySrc.key); C.set("tune_scale", keySrc.minor ? 2 : 1);
-      if (values.tune_on < 0.5) C.set("tune_speed", 15);
-      notes.push(`tom ${KEYS[keySrc.key]} ${keySrc.minor ? "menor" : "maior"} (${keySrc === b ? "do beat" : "da voz"}) no autotune`);
+  function autoMix(voice, beat, values, hostBpm, opts = {}) {
+    const K = window.Knowledge; const notes = []; let v = Object.assign({}, values);
+    const C = makeCtx(values);
+    const b = beat && beat.valid ? beat : null, vo = voice && voice.valid ? voice : null;
+    // 1) estilo: escolhido pelo usuário (artista/preset) ou detectado no beat
+    let style = opts.style || null, ranking = [];
+    if (!style && b && K) { ranking = K.classifyStyle(b); if (ranking.length) style = ranking[0].style; }
+    if (style && K && !opts.keepPreset) {
+      const sv = K.styleValues(style); Object.entries(sv).forEach(([k, x]) => { if (k !== "tune_key") C.set(k, x); });
+      notes.push(`estilo ${ranking.length ? "detectado" : "escolhido"}: ${K.STYLES[style].name}${ranking.length ? ` (${Math.round(ranking[0].p * 100)}%${ranking[1] ? `, ou ${ranking[1].name} ${Math.round(ranking[1].p * 100)}%` : ""})` : ""}`);
     }
-    // BPM
+    // 2) tom
+    const keySrc = b && b.keyConfidence > 0.3 ? b : (vo && vo.keyConfidence > 0.3 ? vo : (b || vo));
+    if (keySrc && keySrc.key >= 0) { C.set("tune_key", keySrc.key); C.set("tune_scale", keySrc.minor ? 2 : 1); if (C.get("tune_on") > 0.5 || !style) C.on("tune_on");
+      notes.push(`tom ${KEYS[keySrc.key]} ${keySrc.minor ? "menor" : "maior"} (${keySrc === b ? "do beat" : "da voz"})`); }
+    // 3) BPM
     const bpm = hostBpm > 0 ? hostBpm : (b && b.bpm > 0 ? b.bpm : 0);
     if (bpm > 0) {
-      C.on("dly_on");
-      if (hostBpm > 0) { C.set("dly_sync", 1); }
-      else { C.set("dly_sync", 0); const beats = [0.125, 1 / 6, 0.25, 0.375, 1 / 3, 0.5, 0.75, 2 / 3, 1, 1.5, 2, 4][values.dly_note] || 0.75; C.set("dly_time", 60000 / bpm * beats); }
-      if (values.dly_on < 0.5) { C.set("dly_note", bpm > 115 ? 6 : 9); C.set("dly_mix", 16); C.set("dly_feedback", 28); C.set("dly_duck", 50); C.set("dly_lowcut", 380); }
-      notes.push(`delay travado em ${Math.round(bpm)} BPM`);
+      if (hostBpm > 0) C.set("dly_sync", 1);
+      else { C.set("dly_sync", 0); const beats = [0.125, 1 / 6, 0.25, 0.375, 1 / 3, 0.5, 0.75, 2 / 3, 1, 1.5, 2, 4][Math.round(C.get("dly_note"))] || 0.75; C.set("dly_time", 60000 / bpm * beats); }
+      C.set("rev_predelay", Math.max(10, Math.min(60, 60000 / bpm / 16)));
+      notes.push(`delay e pré-delay travados em ${Math.round(bpm)} BPM`);
     }
-    // voz
-    if (v) {
-      if (v.noiseFloorDb > -58) {
-        C.on("nr_on"); C.set("nr_amount", Math.min(80, Math.max(25, (v.noiseFloorDb + 72) * 2.5)));
-        C.on("gate_on"); C.set("gate_thresh", v.noiseFloorDb + 8);
-        notes.push(`ruído de fundo em ${Math.round(v.noiseFloorDb)} dB: redução de ruído e gate ligados`);
-      } else { C.on("gate_on"); C.set("gate_thresh", Math.max(-70, v.noiseFloorDb + 10)); }
-      const activeRms = v.rmsDb + Math.min(10, v.crestDb * 0.35);
-      C.on("comp_on"); C.set("comp_thresh", Math.max(-40, Math.min(-8, activeRms + 2)));
-      C.set("comp_ratio", v.crestDb > 18 ? 7 : v.crestDb > 14 ? 5 : 4); C.set("comp_makeup", Math.min(10, Math.max(2, (v.crestDb - 8) * 0.5)));
-      notes.push(`compressor calibrado pra dinâmica da voz (crest ${Math.round(v.crestDb)} dB)`);
-      C.on("ds_on"); C.set("ds_thresh", v.sibilanceDb > -14 ? -36 : v.sibilanceDb > -18 ? -31 : -27); C.set("ds_range", v.sibilanceDb > -14 ? 10 : 7);
-      if (v.sibilanceDb > -18) notes.push("bastante S na voz: de-esser mais firme");
-      C.on("eq_on");
-      if (v.bands[2] > 32) { C.set("eq_m1_freq", 300); C.set("eq_m1_gain", -Math.min(5, (v.bands[2] - 28) * 0.4)); notes.push("cortei lama em 300 Hz"); }
-      if (v.bands[4] < 13) { C.set("eq_m2_freq", 3200); C.set("eq_m2_gain", Math.min(4, (14 - v.bands[4]) * 0.5 + 1)); }
-      if (v.bands[5] < 6) { C.on("air_on"); C.set("air_high", Math.max(values.air_high, 38)); notes.push("faltava ar no topo: levantei o High Air"); }
+    // 4) diagnóstico e correções
+    if (K) {
+      const cur = Object.assign({}, values, C.changes);
+      const dg = K.diagnoseMix({ voiceSpec: vo && vo.spectrum, beatSpec: b && b.spectrum, voice: vo, beat: b, values: cur });
+      Object.entries(dg.fixAll).forEach(([k, x]) => C.set(k, x));
+      dg.issues.forEach((i) => notes.push(i.title.toLowerCase()));
+      if (b && b.lufs > -30) C.set("lufs_target", Math.max(-14, Math.min(-6, Math.round(b.lufs))));
+      return { changes: C.changes, notes, diagnosis: dg, ranking };
     }
-    // beat x voz (abrir espaço)
-    if (b) {
-      if (b.bands[0] + b.bands[1] > 55) { C.set("eq_hpf", Math.max(values.eq_hpf, 115)); notes.push("beat com muito grave: subi o passa-altas da voz pra não embolar"); }
-      if (b.bands[4] > 14) { C.set("eq_m2_freq", 4500); C.on("air_on"); C.set("air_high", Math.max(C.get("air_high"), 42)); notes.push("beat ocupando 3 kHz: joguei a presença da voz pra 4.5 kHz e mais ar"); }
-      if (b.crestDb < 10) { C.set("comp_ratio", Math.min(20, C.get("comp_ratio") + 1)); C.set("dly_duck", 60); C.set("rev_duck", 40); notes.push("beat denso: mais compressão e ducking nos efeitos"); }
-      if (!values.rev_on || values.rev_on < 0.5) { C.on("rev_on"); C.set("rev_type", 1); C.set("rev_predelay", bpm > 0 ? Math.min(60, 60000 / bpm / 16) : 30); C.set("rev_mix", 13); }
-    }
-    C.on("lim_on"); C.set("lim_ceiling", -1);
-    return { changes: C.changes, notes };
+    return { changes: C.changes, notes, ranking };
   }
 
   // =========================================================================
@@ -342,5 +377,5 @@ window.Agent = (function () {
     return JSON.stringify(Object.assign({ valores: vals, presets_de_fabrica: window.CUPIDO_PRESETS.map((p) => p.name) }, extra || {}));
   }
 
-  return { interpret, autoMix, contextFor, KEYS, norm };
+  return { interpret, autoMix, contextFor, KEYS, norm, findArtist, artistAsPreset, styleAsPreset };
 })();

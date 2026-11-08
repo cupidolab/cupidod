@@ -104,10 +104,41 @@ window.Bridge = (function () {
         case "listPresets": return Promise.resolve(presets());
         case "savePreset": { const list = presets().filter((p) => p.name !== params[0]); list.push({ name: params[0], data: JSON.parse(params[1]) }); store.set("userPresets", list); return Promise.resolve(true); }
         case "deletePreset": store.set("userPresets", presets().filter((p) => p.name !== params[0])); return Promise.resolve(true);
+        case "pickAudio": return pickInBrowser(params[0]);
+        case "loadAudioData": return fakeMedia(params[0], params[1], null);
+        case "clearAudio": return Promise.resolve(true);
+        case "getMedia": return Promise.resolve({});
+        case "renderMix": return new Promise((res) => setTimeout(() => res({ ok: true, after: "previa.wav", before: "previa-antes.wav", lufsAfter: values.lufs_target, lufsBefore: values.lufs_target,
+            voiceSpectrum: spec32(-30, { mud: 5, air: -14 }), beatSpectrum: spec32(-27, { sub: 12, pres: 3 }), beatGainDb: -2 }), 1200));
         case "startVoice": return Promise.resolve({ ok: false, error: "browser" });
         case "stopVoice": return Promise.resolve({ ok: false, error: "browser" });
         default: return Promise.resolve(true);
       }
+    }
+    // ---- anexos na prévia: lê o arquivo de verdade (forma de onda) e simula a análise ----
+    function spec32(base, o) {
+      return Array.from({ length: 32 }, (_, i) => { const f = 20 * Math.pow(1000, (i + 0.5) / 32);
+        return base - 6 * Math.log2(Math.max(1, f / 400)) + (o.sub && f < 120 ? o.sub : 0) + (o.mud && f > 200 && f < 450 ? o.mud : 0) + (o.pres && f > 1000 && f < 5000 ? o.pres : 0) + (o.air && f > 10000 ? o.air : 0); });
+    }
+    async function fakeMedia(kind, name, file) {
+      let wave = Array.from({ length: 160 }, (_, i) => 0.3 + 0.5 * Math.abs(Math.sin(i * 0.37)) * Math.random()), seconds = 150;
+      if (file && window.AudioContext) {
+        try { const buf = await new AudioContext().decodeAudioData(await file.arrayBuffer()); seconds = buf.duration; const d = buf.getChannelData(0), step = Math.floor(d.length / 160);
+          wave = Array.from({ length: 160 }, (_, i) => { let p = 0; for (let j = i * step; j < (i + 1) * step; j += 32) p = Math.max(p, Math.abs(d[j])); return p; }); } catch (e) {}
+      }
+      const beat = kind !== "voice";
+      return { ok: true, media: { kind, name: name || "arquivo", valid: true, seconds, sampleRate: 44100, bpm: beat ? 142 : 0, bpmConfidence: 0.8, key: 9, keyName: "A", minor: true, keyConfidence: 0.7,
+        lufs: beat ? -8.5 : -19, rmsDb: beat ? -11 : -21, peakDb: -0.5, crestDb: beat ? 11 : 17, noiseFloorDb: beat ? -60 : -54, sibilanceDb: -15, centroidHz: 900,
+        subSustain: beat ? 0.55 : 0.02, hatRate: 7, kickRate: 2, tripletRatio: 0.5, tripletRatioHalf: 0.5, offbeatRatio: 0.4, offbeatRatioHalf: 1, stereoWidth: 0.5,
+        bands: beat ? [24, 34, 14, 13, 10, 5] : [1, 14, 33, 30, 15, 7], spectrum: beat ? spec32(-27, { sub: 12, pres: 3 }) : spec32(-30, { mud: 5, air: -14 }), wave } };
+    }
+    function pickInBrowser(kind) {
+      return new Promise((res) => {
+        const inp = document.createElement("input"); inp.type = "file"; inp.accept = "audio/*";
+        inp.onchange = async () => { const f = inp.files[0]; if (!f) return res({ ok: false, cancelled: true }); res(await fakeMedia(kind, f.name, f)); };
+        inp.click();
+        setTimeout(() => { if (!inp.files || !inp.files.length) {} }, 0);
+      });
     }
     return { call, start };
   })();

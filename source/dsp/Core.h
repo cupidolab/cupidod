@@ -264,6 +264,54 @@ inline float saturate (SatShape s, float x)
     return x;
 }
 
+
+// -----------------------------------------------------------------------------
+//  Oversampling 2x (FIR meia-banda simétrico, 47 taps, janela Kaiser-ish)
+//  Usado onde há saturação: evita aliasing (o "chiado áspero" de distorção digital).
+// -----------------------------------------------------------------------------
+class Oversampler2x
+{
+public:
+    static constexpr int kTaps = 47;
+    Oversampler2x()
+    {
+        const int M = kTaps - 1; double sum = 0;
+        for (int i = 0; i < kTaps; ++i)
+        {
+            const double n = i - M / 2.0, x = n * 0.5;                       // corte em fs/4 (da taxa 2x)
+            const double sinc = n == 0 ? 1.0 : std::sin (3.14159265358979323846 * x) / (3.14159265358979323846 * x);
+            const double w = 0.42 - 0.5 * std::cos (2 * 3.14159265358979323846 * i / M) + 0.08 * std::cos (4 * 3.14159265358979323846 * i / M);
+            h[i] = (float) (sinc * w); sum += h[i];
+        }
+        for (float& v : h) v = (float) (v / sum);
+    }
+    void reset() { std::fill (std::begin (zu), std::end (zu), 0.0f); std::fill (std::begin (zd), std::end (zd), 0.0f); pu = pd = 0; }
+    /** n amostras -> 2n amostras */
+    void up (const float* in, float* out, int n)
+    {
+        for (int i = 0; i < n; ++i)
+            for (int k = 0; k < 2; ++k)
+            {
+                zu[pu] = k == 0 ? in[i] * 2.0f : 0.0f; pu = (pu + 1) % kTaps;
+                float acc = 0; for (int t = 0; t < kTaps; ++t) acc += h[t] * zu[(pu + t) % kTaps];
+                out[2 * i + k] = acc;
+            }
+    }
+    /** 2n amostras -> n amostras */
+    void down (const float* in, float* out, int n)
+    {
+        for (int i = 0; i < n; ++i)
+        {
+            for (int k = 0; k < 2; ++k) { zd[pd] = in[2 * i + k]; pd = (pd + 1) % kTaps; }
+            float acc = 0; for (int t = 0; t < kTaps; ++t) acc += h[t] * zd[(pd + t) % kTaps];
+            out[i] = acc;
+        }
+    }
+    static int latency() { return kTaps / 2; }   // em amostras da taxa 2x (ida+volta ~ kTaps/2 na taxa base)
+private:
+    float h[kTaps] {}, zu[kTaps] {}, zd[kTaps] {}; int pu = 0, pd = 0;
+};
+
 /** Medidor de pico com decaimento (para os meters). */
 struct PeakMeter
 {

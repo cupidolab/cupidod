@@ -8,6 +8,7 @@
 #include <juce_audio_devices/juce_audio_devices.h>
 #include "PluginProcessor.h"
 #include "AiClient.h"
+#include "LocalSpeech.h"
 
 /** Gravador do microfone do sistema para comandos de voz (fonte "mic"). */
 class MicRecorder : private juce::AudioIODeviceCallback
@@ -55,6 +56,8 @@ private:
     bool savePreset (const juce::String& name, const juce::String& json);
     bool deletePreset (const juce::String& name);
     juce::String compactSpec() const;
+    void pickAudio (const juce::String& kind, Completion done);
+    void runAudioJob (const juce::String& kind, std::function<juce::String()> job, Completion done);
     static void finishAsync (std::shared_ptr<std::atomic<bool>> alive, Completion done, juce::var result);
 
     CupidoProcessor& proc;
@@ -66,6 +69,7 @@ private:
     juce::ThreadPool& pool() { return sharedPool->pool; }
     std::shared_ptr<std::atomic<bool>> alive = std::make_shared<std::atomic<bool>> (true);
 
+    std::unique_ptr<juce::FileChooser> chooser;
     std::unique_ptr<juce::WebBrowserComponent> web;
     std::vector<float> lastSent;      // últimos valores enviados à UI (para mandar só o que mudou)
     int frame = 0;

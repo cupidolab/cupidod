@@ -58,4 +58,20 @@ inline std::vector<uint8_t> encodeWav16 (const std::vector<float>& x, int sample
     for (float v : x) { const int s = (int) std::lround (std::max (-1.0f, std::min (1.0f, v)) * 32767.0f); u16 ((uint16_t) (int16_t) s); }
     return out;
 }
+/** WAV estéreo PCM 24 bits em memória (render da mix). */
+inline std::vector<uint8_t> encodeWavStereo24 (const std::vector<float>& L, const std::vector<float>& R, int sampleRate)
+{
+    const size_t n = std::min (L.size(), R.size()); const uint32_t dataBytes = (uint32_t) (n * 6);
+    std::vector<uint8_t> out; out.reserve (44 + dataBytes);
+    auto u32 = [&] (uint32_t v) { for (int i = 0; i < 4; ++i) out.push_back ((uint8_t) ((v >> (8 * i)) & 0xFF)); };
+    auto u16 = [&] (uint16_t v) { out.push_back ((uint8_t) (v & 0xFF)); out.push_back ((uint8_t) (v >> 8)); };
+    auto tag = [&] (const char* t) { for (int i = 0; i < 4; ++i) out.push_back ((uint8_t) t[i]); };
+    tag ("RIFF"); u32 (36 + dataBytes); tag ("WAVE");
+    tag ("fmt "); u32 (16); u16 (1); u16 (2); u32 ((uint32_t) sampleRate); u32 ((uint32_t) sampleRate * 6u); u16 (6); u16 (24);
+    tag ("data"); u32 (dataBytes);
+    auto s24 = [&] (float v) { const int s = (int) std::lround (std::max (-1.0f, std::min (1.0f, v)) * 8388607.0f);
+        out.push_back ((uint8_t) (s & 0xFF)); out.push_back ((uint8_t) ((s >> 8) & 0xFF)); out.push_back ((uint8_t) ((s >> 16) & 0xFF)); };
+    for (size_t i = 0; i < n; ++i) { s24 (L[i]); s24 (R[i]); }
+    return out;
+}
 } // namespace cupido

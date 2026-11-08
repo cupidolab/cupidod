@@ -161,7 +161,7 @@ public:
     static constexpr int N = 8;
     void prepare (double sampleRate)
     {
-        sr = sampleRate; pre.prepare ((int) (0.26 * sr));
+        sr = sampleRate; pre.prepare ((int) (0.36 * sr));
         for (int i = 0; i < N; ++i) { lines[i].prepare ((int) (0.25 * sr)); lfo[i] = (float) i * 0.7f; damp[i].reset(); }
         for (auto& a : ap) a.dl.prepare ((int) (0.03 * sr));
         mixS.prepare (sr, 30); mixS.reset (0); envAtk = msToCoef (8, sr); envRel = msToCoef (350, sr); duckS.prepare (sr, 80); duckS.reset (1);
@@ -169,7 +169,7 @@ public:
     }
     void reset() { pre.reset(); for (auto& l : lines) l.reset(); for (auto& a : ap) a.dl.reset(); for (auto& d : damp) d.reset(); for (auto& b : lc) b.reset(); for (auto& b : hc) b.reset(); env = 0; }
 
-    struct Settings { int type; float size, decay, predelay, damp, lowcut, highcut, mod, width, duck, mix; };
+    struct Settings { int type; float size, decay, predelay, damp, lowcut, highcut, mod, width, duck, mix, diff = 70, er = 35, bass = 1; };
 
     void setParams (const Settings& s)
     {
@@ -183,13 +183,17 @@ public:
             len[i] = baseMs[i] * 0.001f * (float) sr * scale;
             const float g = std::pow (10.0f, -3.0f * (len[i] / (float) sr) / std::max (0.1f, s.decay));
             fbGain[i] = g;
+            fbGainLow[i] = std::pow (10.0f, -3.0f * (len[i] / (float) sr) / std::max (0.1f, s.decay * s.bass));
+            xover[i].setCutoff (sr, 250.0);
             const float dampHz = lerp (16000.0f, 2500.0f, s.damp * 0.01f) * (t == 1 ? 1.25f : 1.0f);
             damp[i].setCutoff (sr, dampHz);
         }
-        diff = typeDiff[t];
+        diff = clampf (typeDiff[t] * (s.diff / 70.0f), 0.05f, 0.85f);
+        erGain = s.er * 0.01f;
         static const float apMs[4] = { 4.77f, 3.59f, 12.73f, 9.31f };
         for (int k = 0; k < 4; ++k) ap[k].len = apMs[k] * 0.001f * (float) sr * (t == 4 ? 0.6f : 1.0f);
         preSamples = std::max (1.0f, s.predelay * 0.001f * (float) sr);
+        erScale = scale;
         modDepth = s.mod * 0.01f * 0.0012f * (float) sr;
         if (s.lowcut != last.lowcut || s.highcut != last.highcut)
             for (int c = 0; c < 2; ++c) { lc[c].set (BqType::HighPass, sr, s.lowcut, 0.6); hc[c].set (BqType::LowPass, sr, std::min ((double) s.highcut, sr * 0.45), 0.6); }
@@ -224,9 +228,19 @@ public:
                     for (int j = k; j < k + s; ++j) { const float u = h[j], v = h[j + s]; h[j] = u + v; h[j + s] = u - v; }
             const float nrm = 0.35355339f;
             for (int k = 0; k < N; ++k)
-                lines[k].push (damp[k].lp (h[k] * nrm * fbGain[k]) + x * ((k & 1) ? -0.5f : 0.5f));
-
-            float wl = (y[0] - y[2] + y[4] - y[6]) * 0.5f, wr = (y[1] - y[3] + y[5] - y[7]) * 0.5f;
+            {
+                const float v = h[k] * nrm; const float lo = xover[k].lp (v);
+                lines[k].push (lo * fbGainLow[k] + damp[k].lp ((v - lo) * fbGain[k]) + x * ((k & 1) ? -0.5f : 0.5f));
+            }
+            // primeiras reflexões: taps do pré-delay (padrão assimétrico L/R)
+            static const float erMs[6] = { 7.3f, 11.9f, 17.1f, 23.3f, 29.7f, 37.1f };
+            float erL = 0, erR = 0;
+            for (int k = 0; k < 6; ++k)
+            {
+                const float tap = pre.read (preSamples + erMs[k] * 0.001f * (float) sr * erScale) * (1.0f - (float) k * 0.13f);
+                if (k & 1) erR += tap; else erL += tap;
+            }
+            float wl = (y[0] - y[2] + y[4] - y[6]) * 0.5f + erL * erGain * 0.6f, wr = (y[1] - y[3] + y[5] - y[7]) * 0.5f + erR * erGain * 0.6f;
             wl = hc[0].process (lc[0].process (wl)); wr = hc[1].process (lc[1].process (wr));
             const float mid = 0.5f * (wl + wr), side = 0.5f * (wl - wr) * width;
             wl = mid + side; wr = mid - side;
@@ -241,7 +255,7 @@ private:
         { const float d = dl.read (len); const float v = x + g * d; dl.push (v); return d - g * v; }
     };
     double sr = 48000; DelayLine pre, lines[N]; AllPass ap[4]; OnePole damp[N]; Biquad lc[2], hc[2];
-    float len[N] {}, fbGain[N] {}, lfo[N] {}, lfoInc = 0, modDepth = 0, preSamples = 1, diff = 0.7f, width = 1, duck = 0, env = 0, envAtk = 0, envRel = 0;
+    float len[N] {}, fbGain[N] {}, fbGainLow[N] {}, erGain = 0.35f, erScale = 1.0f; OnePole xover[N]; float lfo[N] {}, lfoInc = 0, modDepth = 0, preSamples = 1, diff = 0.7f, width = 1, duck = 0, env = 0, envAtk = 0, envRel = 0;
     Smoother mixS, duckS; Settings last {}; int lastType = -1;
 };
 } // namespace cupido

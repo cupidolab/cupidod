@@ -62,65 +62,73 @@ class Prisma
 {
 public:
     static constexpr int kBands = 5;
-    void prepare (double sampleRate)
+    void prepare (double sampleRate, int maxBlock)
     {
-        sr = sampleRate;
-        for (auto& d : dc) d.prepare (sr);
+        sr = sampleRate; osr = sr * 2.0;
+        for (auto& d : dc) d.prepare (osr);
         for (auto& f : lastF) f = -1;
-        for (auto& s : mixS) s.prepare (sr, 30.0f);
+        for (auto& b : up) b.assign ((size_t) maxBlock * 2 + 8, 0.0f);
+        mixS.prepare (osr, 30.0f); mixS.reset (0.5f);
         reset();
     }
     void reset()
     {
         for (auto& ch : bp) for (auto& b : ch) b.reset();
         for (auto& d : dc) d.reset();
+        for (auto& o : os) o.reset();
     }
 
     void setParams (int type, float drivePct, const float* freqs, const float* amtsDb, float mixPct, float outDb)
     {
         shape = (SatShape) type;
-        drive = 1.0f + drivePct * 0.01f * 11.0f; // 1x .. 12x
+        drive = 1.0f + drivePct * 0.01f * 9.0f;     // 1x .. 10x
         for (int b = 0; b < kBands; ++b)
         {
             if (freqs[b] != lastF[b])
             {
                 lastF[b] = freqs[b];
+                const BqType t = b == kBands - 1 ? BqType::HighPass : (b == 0 ? BqType::LowPass : BqType::BandPass);
+                const double f = freqs[b] * (b == kBands - 1 ? 0.8 : (b == 0 ? 1.25 : 1.0));
                 const double q = (b == 0 || b == kBands - 1) ? 0.6 : 0.9;
-                auto c = BiquadCoefs::make (b == kBands - 1 ? BqType::HighPass : (b == 0 ? BqType::LowPass : BqType::BandPass), sr, freqs[b] * (b == kBands - 1 ? 0.8 : (b == 0 ? 1.25 : 1.0)), q);
+                auto c = BiquadCoefs::make (t, osr, f, q);
                 bp[0][(size_t) b].set (c); bp[1][(size_t) b].set (c);
             }
-            bandGain[b] = dbToGain (amtsDb[b]) - 1.0f; // 0 dB -> 0 (banda desligada)
+            bandGain[b] = dbToGain (amtsDb[b]) - 1.0f;
         }
-        mixS[0].set (mixPct * 0.01f); outGain = dbToGain (outDb);
+        mixS.set (mixPct * 0.01f); outGain = dbToGain (outDb);
     }
 
     void process (float* L, float* R, int n)
     {
         bool any = false; for (float g : bandGain) any |= g > 1.0e-4f;
-        for (int i = 0; i < n; ++i)
+        if (! any) { if (outGain != 1.0f) for (int i = 0; i < n; ++i) { L[i] *= outGain; if (R) R[i] *= outGain; } return; }
+        const int numCh = R ? 2 : 1;
+        for (int ch = 0; ch < numCh; ++ch)
         {
-            const float mix = mixS[0].next();
-            for (int ch = 0; ch < (R ? 2 : 1); ++ch)
+            float* x = ch == 0 ? L : R; float* u = up[(size_t) ch].data();
+            os[ch].up (x, u, n);                                   // 2x: saturação sem aliasing
+            Smoother m = mixS;
+            for (int i = 0; i < 2 * n; ++i)
             {
-                float* x = ch == 0 ? L : R; const float in = x[i];
-                float wet = 0;
-                if (any)
-                    for (int b = 0; b < kBands; ++b)
-                    {
-                        const float band = bp[ch][(size_t) b].process (in);
-                        if (bandGain[b] <= 1.0e-4f) continue;
-                        const float d = band * bandGain[b];                    // "diferença do boost"
-                        wet += saturate (shape, d * drive) / drive;            // satura só a diferença
-                    }
+                const float in = u[i]; const float mix = m.next(); float wet = 0;
+                for (int b = 0; b < kBands; ++b)
+                {
+                    const float band = bp[ch][(size_t) b].process (in);
+                    if (bandGain[b] <= 1.0e-4f) continue;
+                    const float dlt = band * bandGain[b];           // "diferença do boost"
+                    wet += saturate (shape, dlt * drive) / drive;   // satura só a diferença
+                }
                 wet = dc[(size_t) ch].process (wet);
-                x[i] = (in + wet * mix * 2.0f) * outGain;   // mix 50% = ganho nominal da banda
+                u[i] = (in + wet * mix * 2.0f) * outGain;
             }
+            if (ch == numCh - 1) mixS = m;
+            os[ch].down (u, x, n);
         }
     }
 private:
-    double sr = 48000; SatShape shape = SatShape::Tube; float drive = 1, outGain = 1;
-    std::array<std::array<Biquad, kBands>, 2> bp; std::array<DcBlocker, 2> dc;
-    float bandGain[kBands] {}; float lastF[kBands] {}; Smoother mixS[1];
+    double sr = 48000, osr = 96000; SatShape shape = SatShape::Tube; float drive = 1, outGain = 1;
+    std::array<std::array<Biquad, kBands>, 2> bp; std::array<DcBlocker, 2> dc; Oversampler2x os[2];
+    std::array<std::vector<float>, 2> up; float bandGain[kBands] {}; float lastF[kBands] {}; Smoother mixS;
 };
 
 // -----------------------------------------------------------------------------

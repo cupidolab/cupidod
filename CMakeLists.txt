@@ -76,13 +76,43 @@ juce_add_binary_data(CupidoUI NAMESPACE CupidoUI HEADER_NAME BinaryData.h SOURCE
 target_sources(Cupido PRIVATE
     source/PluginProcessor.cpp
     source/PluginEditor.cpp
-    source/AiClient.cpp)
+    source/AiClient.cpp
+    source/MediaLab.cpp
+    source/LocalSpeech.cpp)
+
+# ---- Reconhecimento de voz offline (whisper.cpp) ----
+option(CUPIDO_WITH_WHISPER "Comandos de voz offline com whisper.cpp" ON)
+if(APPLE AND CMAKE_OSX_ARCHITECTURES MATCHES ";")
+    message(STATUS "CUPIDO: build universal no macOS -> whisper desativado (use -DCMAKE_OSX_ARCHITECTURES=arm64 para ter voz offline)")
+    set(CUPIDO_WITH_WHISPER OFF)
+endif()
+if(CUPIDO_WITH_WHISPER)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    set(WHISPER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(WHISPER_BUILD_SERVER OFF CACHE BOOL "" FORCE)
+    set(GGML_NATIVE OFF CACHE BOOL "" FORCE)
+    set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
+    set(GGML_METAL OFF CACHE BOOL "" FORCE)
+    set(GGML_BLAS OFF CACHE BOOL "" FORCE)
+    set(GGML_CUDA OFF CACHE BOOL "" FORCE)
+    set(GGML_VULKAN OFF CACHE BOOL "" FORCE)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+    FetchContent_Declare(whisper
+        GIT_REPOSITORY https://github.com/ggml-org/whisper.cpp.git
+        GIT_TAG        v1.9.2
+        GIT_SHALLOW    ON)
+    FetchContent_MakeAvailable(whisper)
+    target_link_libraries(Cupido PRIVATE whisper)
+    target_compile_definitions(Cupido PRIVATE CUPIDO_HAS_WHISPER=1)
+endif()
 
 target_include_directories(Cupido PRIVATE source)
 
 target_compile_definitions(Cupido PUBLIC
     JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1
     JUCE_VST3_CAN_REPLACE_VST2=0
+    JUCE_USE_MP3AUDIOFORMAT=1
     JUCE_DISPLAY_SPLASH_SCREEN=0
     JUCE_REPORT_APP_USAGE=0
     JUCE_STRICT_REFCOUNTEDPOINTER=1)
@@ -92,6 +122,7 @@ target_link_libraries(Cupido
         CupidoUI
         juce::juce_audio_utils
         juce::juce_audio_devices
+        juce::juce_audio_formats
         juce::juce_gui_extra
         juce::juce_dsp
     PUBLIC
@@ -103,5 +134,6 @@ target_link_libraries(Cupido
 option(CUPIDO_BUILD_TESTS "Compila os testes do DSP" ON)
 if(CUPIDO_BUILD_TESTS)
     add_executable(cupido_dsp_tests tools/test_dsp.cpp)
+    add_executable(cupido_tune_tests tools/test_tune.cpp)
     add_executable(cupido_gen_params tools/gen_params.cpp)
 endif()

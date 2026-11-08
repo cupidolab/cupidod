@@ -16,7 +16,8 @@
   X(InGain,        "in_gain",        "Entrada",          "io",     -24,   24,    0,     0, 0, "dB",   "") \
   X(OutGain,       "out_gain",       "Saída",            "io",     -24,   24,    0,     0, 0, "dB",   "") \
   X(Mix,           "mix",            "Mix Geral",        "io",       0,  100,  100,     0, 0, "%",    "") \
-  X(LatencyMode,   "latency_mode",   "Modo",             "io",       0,    1,    0,     1, 0, "choice","Mixagem HQ|Gravação (baixa latência)") \
+  X(LatencyMode,   "latency_mode",   "Modo",             "io",       0,    1,    0,     1, 0, "choice","Mixagem HQ|Ao vivo (latência mínima)") \
+  X(AutoGain,      "auto_gain",      "Ganho Automático", "io",       0,    1,    1,     1, 0, "bool", "") \
   /* ---------- LIMPA: Gate ---------- */ \
   X(GateOn,        "gate_on",        "Gate",             "gate",     0,    1,    0,     1, 0, "bool", "") \
   X(GateThresh,    "gate_thresh",    "Threshold",        "gate",   -80,    0,  -50,     0, 0, "dB",   "") \
@@ -53,24 +54,24 @@
   /* ---------- SIBILA: De-esser ---------- */ \
   X(DsOn,          "ds_on",          "De-Esser",         "deess",    0,    1,    1,     1, 0, "bool", "") \
   X(DsFreq,        "ds_freq",        "Frequência",       "deess", 2500,14000, 6500,     0, 1, "Hz",   "") \
-  X(DsThresh,      "ds_thresh",      "Threshold",        "deess",  -60,    0,  -28,     0, 0, "dB",   "") \
+  X(DsThresh,      "ds_thresh",      "Threshold",        "deess",  -60,    0,  -30,     0, 0, "dB",   "") \
   X(DsRange,       "ds_range",       "Redução Máx",      "deess",    0,   24,    8,     0, 0, "dB",   "") \
   X(DsMode,        "ds_mode",        "Modo",             "deess",    0,    1,    0,     1, 0, "choice","Split (só agudos)|Wide (sinal todo)") \
   X(DsListen,      "ds_listen",      "Ouvir S",          "deess",    0,    1,    0,     1, 0, "bool", "") \
   /* ---------- PUNCH: Compressor FET/VCA ---------- */ \
   X(CompOn,        "comp_on",        "Compressor",       "comp",     0,    1,    1,     1, 0, "bool", "") \
-  X(CompThresh,    "comp_thresh",    "Threshold",        "comp",   -60,    0,  -18,     0, 0, "dB",   "") \
-  X(CompRatio,     "comp_ratio",     "Ratio",            "comp",     1,   20,    4,     0, 1, ":1",   "") \
+  X(CompThresh,    "comp_thresh",    "Threshold",        "comp",   -60,    0,  -20,     0, 0, "dB",   "") \
+  X(CompRatio,     "comp_ratio",     "Ratio",            "comp",     1,   20,    3,     0, 1, ":1",   "") \
   X(CompAttack,    "comp_attack",    "Ataque",           "comp",  0.05,  100,    5,     0, 1, "ms",   "") \
   X(CompRelease,   "comp_release",   "Release",          "comp",    10, 1500,   80,     0, 1, "ms",   "") \
   X(CompKnee,      "comp_knee",      "Joelho",           "comp",     0,   18,    6,     0, 0, "dB",   "") \
-  X(CompMakeup,    "comp_makeup",    "Makeup",           "comp",   -12,   24,    3,     0, 0, "dB",   "") \
+  X(CompMakeup,    "comp_makeup",    "Makeup",           "comp",   -12,   24,    0,     0, 0, "dB",   "") \
   X(CompChar,      "comp_char",      "Caráter",          "comp",     0,    2,    1,     1, 0, "choice","Limpo|FET (1176)|VCA") \
   X(CompMix,       "comp_mix",       "Paralelo",         "comp",     0,  100,  100,     0, 0, "%",    "") \
   /* ---------- OPTO: Compressor óptico (LA-2A) ---------- */ \
   X(OptoOn,        "opto_on",        "Opto",             "opto",     0,    1,    0,     1, 0, "bool", "") \
   X(OptoPeak,      "opto_peak",      "Peak Reduction",   "opto",     0,  100,   35,     0, 0, "%",    "") \
-  X(OptoGain,      "opto_gain",      "Ganho",            "opto",   -12,   24,    2,     0, 0, "dB",   "") \
+  X(OptoGain,      "opto_gain",      "Ganho",            "opto",   -12,   24,    0,     0, 0, "dB",   "") \
   X(OptoMix,       "opto_mix",       "Paralelo",         "opto",     0,  100,  100,     0, 0, "%",    "") \
   /* ---------- PRISMA: Saturação multibanda (estilo enhancer paralelo) ---------- */ \
   X(SatOn,         "sat_on",         "Prisma",           "sat",      0,    1,    0,     1, 0, "bool", "") \
@@ -86,12 +87,12 @@
   X(SatB4Amt,      "sat_b4_amt",     "Banda 4",          "sat",      0,   12,    0,     0, 0, "dB",   "") \
   X(SatB5Freq,     "sat_b5_freq",    "Banda 5 Freq",     "sat",   5000,18000,10000,     0, 1, "Hz",   "") \
   X(SatB5Amt,      "sat_b5_amt",     "Banda 5",          "sat",      0,   12,    0,     0, 0, "dB",   "") \
-  X(SatMix,        "sat_mix",        "Mix",              "sat",      0,  100,   60,     0, 0, "%",    "") \
+  X(SatMix,        "sat_mix",        "Mix",              "sat",      0,  100,   50,     0, 0, "%",    "") \
   X(SatOut,        "sat_out",        "Saída",            "sat",    -12,   12,    0,     0, 0, "dB",   "") \
   /* ---------- AR: Excitador dinâmico (estilo Dolby-A trick) ---------- */ \
   X(AirOn,         "air_on",         "Ar",               "air",      0,    1,    1,     1, 0, "bool", "") \
-  X(AirMid,        "air_mid",        "Mid Air",          "air",      0,  100,   15,     0, 0, "%",    "") \
-  X(AirHigh,       "air_high",       "High Air",         "air",      0,  100,   25,     0, 0, "%",    "") \
+  X(AirMid,        "air_mid",        "Mid Air",          "air",      0,  100,   10,     0, 0, "%",    "") \
+  X(AirHigh,       "air_high",       "High Air",         "air",      0,  100,   15,     0, 0, "%",    "") \
   X(AirTrim,       "air_trim",       "Trim",             "air",    -12,    6,    0,     0, 0, "dB",   "") \
   /* ---------- DOBRA: Doubler / estéreo ---------- */ \
   X(DblOn,         "dbl_on",         "Doubler",          "dbl",      0,    1,    0,     1, 0, "bool", "") \
@@ -124,6 +125,9 @@
   X(RevDamp,       "rev_damp",       "Amortecer",        "rev",      0,  100,   45,     0, 0, "%",    "") \
   X(RevLowCut,     "rev_lowcut",     "Corte Grave",      "rev",     20, 1000,  250,     0, 1, "Hz",   "") \
   X(RevHighCut,    "rev_highcut",    "Corte Agudo",      "rev",   1000,20000, 9000,     0, 1, "Hz",   "") \
+  X(RevDiff,       "rev_diff",       "Difusão",          "rev",      0,  100,   70,     0, 0, "%",    "") \
+  X(RevEarly,      "rev_er",         "Primeiras Reflexões","rev",    0,  100,   35,     0, 0, "%",    "") \
+  X(RevBass,       "rev_bass",       "Grave x Decay",    "rev",    0.3,    2,    1,     0, 0, "x",    "") \
   X(RevMod,        "rev_mod",        "Modulação",        "rev",      0,  100,   25,     0, 0, "%",    "") \
   X(RevWidth,      "rev_width",      "Largura",          "rev",      0,  100,  100,     0, 0, "%",    "") \
   X(RevDuck,       "rev_duck",       "Ducking",          "rev",      0,  100,   15,     0, 0, "%",    "") \
