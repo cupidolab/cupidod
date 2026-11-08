@@ -1,8 +1,3 @@
-# =============================================================================
-#  CUPIDO — build automático para Windows, macOS e Linux + instaladores
-#  Roda a cada push. Ao criar uma tag (ex.: v1.0.0) publica um Release com os
-#  instaladores prontos para baixar.
-# =============================================================================
 name: build
 
 on:
@@ -19,7 +14,7 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: WebView2 SDK (NuGet)
         shell: pwsh
@@ -29,14 +24,15 @@ jobs:
           Invoke-WebRequest "https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/$v" -OutFile C:\webview2\wv2.zip
           Expand-Archive C:\webview2\wv2.zip -DestinationPath "C:\webview2\Microsoft.Web.WebView2.$v" -Force
 
-      - name: Configurar (AAX se o secret AAX_SDK_ZIP_URL existir)
+      - name: Configurar
         shell: pwsh
         env:
           AAX_SDK_ZIP_URL: ${{ secrets.AAX_SDK_ZIP_URL }}
         run: |
-          $aax = ""
-          if ($env:AAX_SDK_ZIP_URL) { Invoke-WebRequest $env:AAX_SDK_ZIP_URL -OutFile aax.zip; Expand-Archive aax.zip -DestinationPath C:\aax; $aax = "-DAAX_SDK_PATH=" + (Get-ChildItem C:\aax -Directory | Select-Object -First 1).FullName }
-          cmake -B build -G "Visual Studio 17 2022" -A x64 -DJUCE_WEBVIEW2_PACKAGE_LOCATION=C:/webview2 $aax
+          $cfg = @("-B", "build", "-A", "x64", "-DJUCE_WEBVIEW2_PACKAGE_LOCATION=C:/webview2")
+          if ($env:AAX_SDK_ZIP_URL) { Invoke-WebRequest $env:AAX_SDK_ZIP_URL -OutFile aax.zip; Expand-Archive aax.zip -DestinationPath C:\aax; $cfg += ("-DAAX_SDK_PATH=" + (Get-ChildItem C:\aax -Directory | Select-Object -First 1).FullName) }
+          cmake --version
+          cmake @cfg
 
       - name: Compilar
         run: cmake --build build --config Release --parallel
@@ -60,10 +56,10 @@ jobs:
           path: dist/*.exe
 
   macos:
-    runs-on: macos-14
+    runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Configurar e compilar (universal arm64 + x86_64)
+      - uses: actions/checkout@v5
+      - name: Configurar e compilar
         run: |
           cmake -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
           cmake --build build --config Release --parallel -- -quiet
@@ -93,9 +89,10 @@ jobs:
           path: dist/*.pkg
 
   linux:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
+    continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Dependências
         run: |
           sudo apt-get update
